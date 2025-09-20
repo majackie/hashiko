@@ -1,0 +1,76 @@
+// dot -Tpng systems.gv -o systems.png
+
+digraph Hashiko {
+  rankdir=LR;
+  node [shape=box, fontsize=11];
+
+  subgraph cluster_endpoints {
+    label="Endpoints";
+    style=rounded;
+    color=gray70;
+
+    Agent1 [label="Linux Agent\n(activities, logins, processes)"];
+    TimeSync [label="Time Sync\n(auth)"];
+  }
+
+  subgraph cluster_server {
+    label="Central Server";
+    style=rounded;
+    color=gray70;
+
+    IngestAPI [label="Ingest API\n(auth, rate-limit)"];
+    Normalizer [label="Normalizer\n(schema, UTC, validation)"];
+    Correlator [label="Correlation Engine\n(temporal rules, baselines)"];
+    AlertSvc [label="Alert Service\n(rules, severity, tickets)"];
+    API [label="REST API\n(queries, exports)"];
+  }
+
+  subgraph cluster_storage {
+    label="Storage";
+    style=rounded;
+    color=gray70;
+
+    EventLog [label="Event Store\n(append-only)"];
+    Index [label="Index\n(time, entity, path)"];
+    Config [label="Config/Rules\n(versioned)"];
+  }
+
+  subgraph cluster_ui {
+    label="Web Interface";
+    style=rounded;
+    color=gray70;
+
+    Dash [label="Dashboards\n(real-time alerts)"];
+    Timeline [label="Timelines\n(event chains)"];
+    RuleMgr [label="Rule Manager\n(temporal patterns)"];
+  }
+
+  subgraph cluster_external {
+    label="External Integrations";
+    style=rounded;
+    color=gray70;
+
+    Ticket [label="Ticketing"];
+  }
+
+  Agent1 -> IngestAPI [label="events + hashes"];
+  TimeSync -> Agent1 [label="clock auth"];
+
+  IngestAPI -> Normalizer [label="validate + dedupe"];
+  Normalizer -> EventLog [label="append"];
+  Normalizer -> Index [label="index"];
+  Normalizer -> Correlator [label="stream"];
+
+  Correlator -> AlertSvc [label="match sequences"];
+  Correlator -> EventLog [label="annotations"];
+  AlertSvc -> EventLog [label="alerts"];
+  AlertSvc -> API [label="read"];
+  API -> Dash [label="websocket"];
+  API -> Timeline [label="query"];
+  API -> RuleMgr [label="CRUD"];
+
+  RuleMgr -> Config [label="update rules"];
+  Config -> Correlator [label="load rules"];
+
+  AlertSvc -> Ticket [label="create"];
+}
