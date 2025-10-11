@@ -122,3 +122,6 @@ Thumbs.db
 
 # Ignore latexindent configuration file
 .latexindent.yaml
+
+.env
+.vscode/*
