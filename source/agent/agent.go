@@ -74,13 +74,17 @@ func hashDirectory(dirPath string, additionalSkips []string) string {
 
 type HashResult struct {
 	Timestamp string            `json:"timestamp"`
+	AgentID   string            `json:"agent_id"`
+	EventType string            `json:"event_type"`
 	Hashes    map[string]string `json:"hashes"`
 }
 
-func hashToJson(hashBoot, hashBin, hashSbin, hashEtc, hashRoot string) (string, error) {
+func hashToJson(agentID, eventType, hashBoot, hashBin, hashSbin, hashEtc, hashRoot string) (string, error) {
 	// create a struct to hold the results
 	result := HashResult{
-		Timestamp: time.Now().String(),
+		Timestamp: time.Now().Format(time.RFC3339),
+		AgentID:   agentID,
+		EventType: eventType,
 		Hashes: map[string]string{
 			dirBoot: hashBoot,
 			dirBin:  hashBin,
@@ -120,13 +124,16 @@ func jsonApiCall(jsonData string, apiURL string) error {
 }
 
 func main() {
+	agentID := "agent-001"
+	eventType := "hash_report"
+
 	hashBoot := hashDirectory(dirBoot, nil)
 	hashBin := hashDirectory(dirBin, nil)
 	hashSbin := hashDirectory(dirSbin, nil)
 	hashEtc := hashDirectory(dirEtc, skipEtcPaths)
 	hashRoot := hashDirectory(dirRoot, nil)
 
-	jsonOutput, err := hashToJson(hashBoot, hashBin, hashSbin, hashEtc, hashRoot)
+	jsonOutput, err := hashToJson(agentID, eventType, hashBoot, hashBin, hashSbin, hashEtc, hashRoot)
 	if err != nil {
 		println("Error creating JSON:", err.Error())
 		return

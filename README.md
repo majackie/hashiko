@@ -1,5 +1,9 @@
 # Hashiko
 # Requirements
+Python 3.14
+```
+https://www.python.org/
+```
 Go 1.24.8
 ```
 https://go.dev/
@@ -14,14 +18,15 @@ echo "DATABASE_URL=<url>" > .env
 echo "PORT=<port>" > .env
 ```
 
-## 2) Run backend.go
+## 2) Run backend
 ```
 cd source
 cd backend
-sudo go run *.go
+pip install -r requirements.txt
+python main.py
 ```
 
-## 3) Run agent.go
+## 3) Run agent
 ```
 cd source
 cd agent

@@ -26,6 +26,10 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+	// verify DB connection
+	if err := db.Ping(); err != nil {
+		panic("Failed to connect to DB: " + err.Error())
+	}
 	// create table if not exists
 	db.Exec(`
 		CREATE TABLE IF NOT EXISTS hash_records (
