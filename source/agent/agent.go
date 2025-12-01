@@ -126,23 +126,39 @@ func jsonApiCall(jsonData string, apiURL string) error {
 func main() {
 	agentID := "agent-001"
 	eventType := "hash_report"
+	apiURL := "http://localhost:8800/api/store"
 
+	// Step 1: Process any previously queued hash data
+	fmt.Println("Processing queued hash data...")
+	processQueue(apiURL)
+
+	// Step 2: Compute current hashes
+	fmt.Println("Computing current file hashes...")
 	hashBoot := hashDirectory(dirBoot, nil)
 	hashBin := hashDirectory(dirBin, nil)
 	hashSbin := hashDirectory(dirSbin, nil)
 	hashEtc := hashDirectory(dirEtc, skipEtcPaths)
 	hashRoot := hashDirectory(dirRoot, nil)
 
+	// Step 3: Create JSON from current hashes
 	jsonOutput, err := hashToJson(agentID, eventType, hashBoot, hashBin, hashSbin, hashEtc, hashRoot)
 	if err != nil {
-		println("Error creating JSON:", err.Error())
+		fmt.Printf("Error creating JSON: %v\n", err)
 		return
 	}
-	print(jsonOutput)
+	fmt.Println(jsonOutput)
 
-	err = jsonApiCall(jsonOutput, "http://localhost:8800/api/store")
+	// Step 4: Attempt to send current hash data to server
+	err = jsonApiCall(jsonOutput, apiURL)
 	if err != nil {
-		println("Error sending to API:", err.Error())
+		fmt.Printf("Error sending to API: %v\n", err)
+		// Server unavailable, save to queue
+		err = saveToQueue(jsonOutput)
+		if err != nil {
+			fmt.Printf("Error saving to queue: %v\n", err)
+		}
 		return
 	}
+
+	fmt.Println("Successfully sent current hash data to server")
 }

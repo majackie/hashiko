@@ -125,3 +125,4 @@ Thumbs.db
 
 .env
 .vscode/*
+source/agent/queue/hash_*.json
