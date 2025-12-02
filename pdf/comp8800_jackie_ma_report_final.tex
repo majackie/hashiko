@@ -194,7 +194,7 @@ Figure~\ref{fig:sequence} shows the sequence of operations from data collection 
 
 Scope includes agents, a central server, storage and a web interface. Features cover file integrity monitoring with SHA-256 hashes, timestamped events, HTTP-based transfer, queue-based retry logic and tabular data visualization. Deliverables are a Go agent, Flask server, PostgreSQL storage, web interface and documented APIs.
 
-Out of scope are real-time alerting, temporal correlation, login monitoring, process monitoring and rule-based detection. These exclusions distinguish Hashiko from comprehensive HIDS platforms like OSSEC. OSSEC includes rootkit detection and compliance reporting. Hashiko focuses on centralized hash collection and storage.
+Out of scope are login monitoring, process monitoring and rule-based detection. These exclusions distinguish Hashiko from comprehensive HIDS platforms like OSSEC. OSSEC includes rootkit detection and compliance reporting. Hashiko focuses on centralized hash collection and storage.
 
 \begin{table}[h]
 \centering
@@ -203,15 +203,17 @@ Out of scope are real-time alerting, temporal correlation, login monitoring, pro
 \hline
 \textbf{In Scope} & \textbf{Out of Scope} \\
 \hline
-User-space agents; central server and storage & Kernel-level monitoring / memory scanning \\
+Agents (Go), central server (Flask), PostgreSQL storage & Login / process monitoring \\
 \hline
-File integrity (SHA-256) & Rootkit detection / kernel mods \\
+Timestamped events, HTTP-based transfer & Temporal correlation (Milestone 3) \\
 \hline
-HTTP transfer, queue-based retry & Real-time alerting / correlation \\
+File integrity monitoring (SHA-256 hashes) & Rule-based detection (Milestone 3) \\
 \hline
-Web UI, APIs, indexed storage & Login/process monitoring \\
+Web interface (HTML/CSS/JS), tabular data visualization & Real-time alerting (Milestone 4) \\
 \hline
-Deliverables: agent, server, APIs, database & Rule-based detection / forensic tooling \\
+Queue-based retry logic for network resilience & Rootkit detection / compliance reporting \\
+\hline
+Documented APIs & Kernel-level monitoring / memory scanning \\
 \hline
 \end{tabular}
 \end{table}
