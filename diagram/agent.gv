@@ -1,0 +1,89 @@
+// dot -Tpng agent.gv -o agent.png
+
+digraph AgentArchitecture {
+    rankdir=TB;
+    node [shape=box, fontsize=11];
+    edge [fontsize=9];
+    compound=true;
+    nodesep=0.5;
+    ranksep=0.6;
+
+    subgraph cluster_agent {
+        label="Linux Agent";
+        style=rounded;
+
+        subgraph cluster_collectors {
+            label="Data Collectors";
+            style=dashed;
+
+            HashDir [label="hashDirectory()\n(SHA-256)"];
+            SkipFilter [label="shouldSkip()\n(volatile path filter)"];
+        }
+
+        subgraph cluster_monitored {
+            label="Monitored Directories";
+            style=dashed;
+
+            DirBoot [label="/boot"];
+            DirBin [label="/usr/bin"];
+            DirSbin [label="/usr/sbin"];
+            DirEtc [label="/etc"];
+            DirRoot [label="/root"];
+        }
+
+        subgraph cluster_output {
+            label="Output Processing";
+            style=dashed;
+
+            HashToJson [label="hashToJson()\n(timestamp, agent_id,\nevent_type, hashes)"];
+            JsonApiCall [label="jsonApiCall()\n(HTTP POST)"];
+        }
+
+        subgraph cluster_queue {
+            label="Queue System";
+            style=dashed;
+
+            InitQueue [label="initQueue()\n(create ./queue)"];
+            SaveToQueue [label="saveToQueue()\n(offline storage)"];
+            ProcessQueue [label="processQueue()\n(retry pending)"];
+        }
+
+        Config [label="config.go\n(skipPaths, skipEtcPaths)"];
+    }
+
+    subgraph cluster_external {
+        label="External";
+        style=rounded;
+
+        Server [label="Central Server\n/api/store"];
+        FileSystem [label="Linux File System"];
+        NTP [label="NTP Server\n(time sync)"];
+    }
+
+    // Data flow
+    FileSystem -> DirBoot [style=dotted];
+    FileSystem -> DirBin [style=dotted];
+    FileSystem -> DirSbin [style=dotted];
+    FileSystem -> DirEtc [style=dotted];
+    FileSystem -> DirRoot [style=dotted];
+
+    DirBoot -> HashDir;
+    DirBin -> HashDir;
+    DirSbin -> HashDir;
+    DirEtc -> HashDir;
+    DirRoot -> HashDir;
+
+    Config -> SkipFilter [xlabel="skip paths"];
+    SkipFilter -> HashDir [xlabel="filter"];
+
+    HashDir -> HashToJson [xlabel="SHA-256 hashes"];
+    NTP -> HashToJson [xlabel="timestamp", style=dashed];
+
+    HashToJson -> JsonApiCall [xlabel="JSON payload"];
+    JsonApiCall -> Server [xlabel="HTTP POST"];
+
+    JsonApiCall -> SaveToQueue [xlabel="on failure", style=dashed];
+    SaveToQueue -> InitQueue;
+    ProcessQueue -> JsonApiCall [xlabel="retry", style=dashed];
+    ProcessQueue -> Server [xlabel="queued data", style=dashed];
+}

@@ -1,0 +1,68 @@
+// dot -Tpng sequence.gv -o sequence.png
+
+digraph SequenceDiagram {
+    rankdir=LR;
+    node [shape=box, fontsize=9, fontname="Arial", margin="0.2,0.1"];
+    edge [fontsize=8];
+    nodesep=0.4;
+    ranksep=0.6;
+
+    // Actors
+    Agent [label="Agent"];
+    Queue [label="Queue"];
+    Server [label="Server"];
+    DB [label="Database"];
+    WebUI [label="Web UI"];
+
+    // Success path
+    subgraph cluster_success {
+        label="Success Path";
+        style=dashed;
+
+        step1 [label="1. Hash dirs"];
+        step2 [label="2. JSON"];
+        step3 [label="3. POST"];
+        step4 [label="4. Validate"];
+        step5 [label="5. INSERT"];
+    }
+
+    // Failure path
+    subgraph cluster_failure {
+        label="Failure Path";
+        style=dashed;
+
+        step6 [label="6. Save queue"];
+        step7 [label="7. Retry"];
+    }
+
+    // View path
+    subgraph cluster_view {
+        label="View Path";
+        style=dashed;
+
+        step8 [label="8. GET"];
+        step9 [label="9. SELECT"];
+        step10 [label="10. Display"];
+    }
+
+    // Flows
+    Agent -> step1;
+    step1 -> step2;
+    step2 -> step3;
+    step3 -> Server;
+    Server -> step4;
+    step4 -> step5;
+    step5 -> DB;
+
+    step3 -> step6 [style=dashed, label="fail"];
+    step6 -> Queue;
+    Queue -> step7;
+    step7 -> Server [style=dashed];
+
+    WebUI -> step8;
+    step8 -> Server;
+    Server -> step9;
+    step9 -> DB;
+    DB -> step10;
+    step10 -> WebUI;
+}

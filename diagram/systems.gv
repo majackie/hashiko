@@ -1,76 +1,60 @@
 // dot -Tpng systems.gv -o systems.png
 
 digraph Hashiko {
-  rankdir=LR;
-  node [shape=box, fontsize=11];
+    rankdir=LR;
+    node [shape=box, fontsize=10, margin="0.3,0.2"];
+    edge [fontsize=8];
+    nodesep=0.8;
+    ranksep=1.2;
 
-  subgraph cluster_endpoints {
-    label="Endpoints";
-    style=rounded;
-    color=gray70;
+    subgraph cluster_endpoints {
+        label="Endpoints";
+        style=rounded;
 
-    Agent1 [label="Linux Agent\n(activities, logins, processes)"];
-    TimeSync [label="Time Sync\n(auth)"];
-  }
+        Agent [label="Linux Agent\n(Go)"];
+        Queue [label="Local Queue\n./queue"];
+        Config [label="Config\nMonitored Dirs"];
+    }
 
-  subgraph cluster_server {
-    label="Central Server";
-    style=rounded;
-    color=gray70;
+    subgraph cluster_server {
+        label="Central Server";
+        style=rounded;
 
-    IngestAPI [label="Ingest API\n(auth, rate-limit)"];
-    Normalizer [label="Normalizer\n(schema, UTC, validation)"];
-    Correlator [label="Correlation Engine\n(temporal rules, baselines)"];
-    AlertSvc [label="Alert Service\n(rules, severity, tickets)"];
-    API [label="REST API\n(queries, exports)"];
-  }
+        IngestAPI [label="POST /api/store"];
+        ViewAPI [label="GET /api/view"];
+        StaticServer [label="Static Server"];
+    }
 
-  subgraph cluster_storage {
-    label="Storage";
-    style=rounded;
-    color=gray70;
+    subgraph cluster_storage {
+        label="PostgreSQL";
+        style=rounded;
 
-    EventLog [label="Event Store\n(append-only)"];
-    Index [label="Index\n(time, entity, path)"];
-    Config [label="Config/Rules\n(versioned)"];
-  }
+        HashRecords [label="hash_records\nTable"];
+        Index [label="Composite\nIndex"];
+    }
 
-  subgraph cluster_ui {
-    label="Web Interface";
-    style=rounded;
-    color=gray70;
+    subgraph cluster_ui {
+        label="Web Interface";
+        style=rounded;
 
-    Dash [label="Dashboards\n(real-time alerts)"];
-    Timeline [label="Timelines\n(event chains)"];
-    RuleMgr [label="Rule Manager\n(temporal patterns)"];
-  }
+        HTML [label="index.html"];
+        JS [label="script.js"];
+        CSS [label="styles.css"];
+    }
 
-  subgraph cluster_external {
-    label="External Integrations";
-    style=rounded;
-    color=gray70;
+    // Data flow
+    Config -> Agent [xlabel="paths"];
+    Agent -> IngestAPI [xlabel="POST JSON"];
+    Agent -> Queue [xlabel="offline", style=dashed];
+    Queue -> IngestAPI [xlabel="retry", style=dashed];
 
-    Ticket [label="Ticketing"];
-  }
+    IngestAPI -> HashRecords [xlabel="INSERT"];
+    HashRecords -> Index [style=dotted];
 
-  Agent1 -> IngestAPI [label="events + hashes"];
-  TimeSync -> Agent1 [label="clock auth"];
+    ViewAPI -> HashRecords [xlabel="SELECT"];
+    ViewAPI -> JS [xlabel="JSON"];
 
-  IngestAPI -> Normalizer [label="validate + dedupe"];
-  Normalizer -> EventLog [label="append"];
-  Normalizer -> Index [label="index"];
-  Normalizer -> Correlator [label="stream"];
-
-  Correlator -> AlertSvc [label="match sequences"];
-  Correlator -> EventLog [label="annotations"];
-  AlertSvc -> EventLog [label="alerts"];
-  AlertSvc -> API [label="read"];
-  API -> Dash [label="websocket"];
-  API -> Timeline [label="query"];
-  API -> RuleMgr [label="CRUD"];
-
-  RuleMgr -> Config [label="update rules"];
-  Config -> Correlator [label="load rules"];
-
-  AlertSvc -> Ticket [label="create"];
+    StaticServer -> HTML;
+    HTML -> JS;
+    HTML -> CSS;
 }

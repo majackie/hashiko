@@ -1,0 +1,49 @@
+// dot -Tpng database.gv -o database.png
+
+digraph DatabaseSchema {
+    rankdir=LR;
+    node [shape=plaintext, fontsize=9, fontname="Arial"];
+    edge [fontsize=8];
+    nodesep=0.3;
+    ranksep=1.0;
+
+    hash_records [label=<
+        <table border="0" cellborder="1" cellspacing="0" cellpadding="8">
+            <tr><td colspan="2"><b>hash_records</b></td></tr>
+            <tr><td align="left">id</td><td align="left">SERIAL PK</td></tr>
+            <tr><td align="left">timestamp</td><td align="left">TIMESTAMP</td></tr>
+            <tr><td align="left">agent_id</td><td align="left">VARCHAR(255)</td></tr>
+            <tr><td align="left">event_type</td><td align="left">VARCHAR(50)</td></tr>
+            <tr><td align="left">hash_boot</td><td align="left">VARCHAR(64)</td></tr>
+            <tr><td align="left">hash_bin</td><td align="left">VARCHAR(64)</td></tr>
+            <tr><td align="left">hash_sbin</td><td align="left">VARCHAR(64)</td></tr>
+            <tr><td align="left">hash_etc</td><td align="left">VARCHAR(64)</td></tr>
+            <tr><td align="left">hash_root</td><td align="left">VARCHAR(64)</td></tr>
+            <tr><td align="left">client_ip</td><td align="left">VARCHAR(45)</td></tr>
+            <tr><td align="left">created_at</td><td align="left">TIMESTAMP</td></tr>
+        </table>
+    >];
+
+    idx [label=<
+        <table border="0" cellborder="1" cellspacing="0" cellpadding="8">
+            <tr><td><b>Index</b></td></tr>
+            <tr><td align="left">idx_composite</td></tr>
+            <tr><td align="left">timestamp DESC</td></tr>
+            <tr><td align="left">agent_id</td></tr>
+            <tr><td align="left">event_type</td></tr>
+        </table>
+    >];
+
+    constraints [label=<
+        <table border="0" cellborder="1" cellspacing="0" cellpadding="8">
+            <tr><td><b>Constraints</b></td></tr>
+            <tr><td align="left">NOT NULL:</td></tr>
+            <tr><td align="left">timestamp</td></tr>
+            <tr><td align="left">agent_id</td></tr>
+            <tr><td align="left">event_type</td></tr>
+        </table>
+    >];
+
+    hash_records -> idx [label="indexed"];
+    hash_records -> constraints [label="enforces", style=dashed];
+}
