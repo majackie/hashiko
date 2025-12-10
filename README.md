@@ -20,16 +20,14 @@ echo "PORT=<port>" > .env
 
 ## 2) Run backend
 ```
-cd source
-cd backend
+cd source/backend
 pip install -r requirements.txt
 python main.py
 ```
 
 ## 3) Run agent
 ```
-cd source
-cd agent
+cd source/agent
 sudo go run *.go
 ```
 
