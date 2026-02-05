@@ -126,7 +126,7 @@ func jsonApiCall(jsonData string, apiURL string) error {
 func main() {
 	agentID := "agent-001"
 	eventType := "hash_report"
-	apiURL := "http://localhost:8800/api/store"
+	apiURL := "http://localhost:8899/api/store"
 
 	// Step 1: Process any previously queued hash data
 	fmt.Println("Processing queued hash data...")

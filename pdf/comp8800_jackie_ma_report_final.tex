@@ -158,7 +158,7 @@ Figure \ref{fig:agent} shows the agent architecture. The agent uses SHA-256 hash
 
 \subsection{Server Architecture}
 
-Built with Flask and PostgreSQL. Loads environment variables and creates a hash\_records table with id, timestamp and five hash columns indexed by id descending. The handleStore endpoint decodes JSON, normalizes client IP and inserts records with parameterized queries. The handleView endpoint returns all records as JSON ordered newest first. Serves static files on port 8800.
+Built with Flask and PostgreSQL. Loads environment variables and creates a hash\_records table with id, timestamp and five hash columns indexed by id descending. The handleStore endpoint decodes JSON, normalizes client IP and inserts records with parameterized queries. The handleView endpoint returns all records as JSON ordered newest first. Serves static files on port 8899.
 
 \subsection{Development}
 
