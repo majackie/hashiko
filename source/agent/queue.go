@@ -37,7 +37,7 @@ func saveToQueue(jsonData string) error {
 }
 
 // processQueue sends all queued JSON files to the server
-func processQueue(apiURL string) {
+func processQueue(apiURL string, apiKey string) {
 	// check if queue directory exists
 	if _, err := os.Stat(queueDir); os.IsNotExist(err) {
 		return
@@ -66,7 +66,7 @@ func processQueue(apiURL string) {
 		}
 
 		// attempt to send to server
-		err = jsonApiCall(string(jsonData), apiURL)
+		err = jsonApiCall(string(jsonData), apiURL, apiKey)
 		if err != nil {
 			fmt.Printf("Failed to send queued file %s: %v\n", file.Name(), err)
 			// keep file in queue for next attempt

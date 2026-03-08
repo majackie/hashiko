@@ -1,4 +1,4 @@
-const API_BASE = 'http://127.0.0.1:8899/api';
+const API_BASE = '/api';
 
 document.getElementById("loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();

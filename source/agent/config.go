@@ -1,10 +1,14 @@
 package main
 
-const dirBoot = "/boot"
-const dirBin = "/usr/bin"
-const dirSbin = "/usr/sbin"
-const dirEtc = "/etc"
-const dirRoot = "/root"
+const watchConfigFilePath = configDir + "/watch.conf"
+
+var defaultWatchPaths = []string{
+	"/boot",
+	"/usr/bin",
+	"/usr/sbin",
+	"/etc",
+	"/root",
+}
 
 var skipPaths = []string{
 	".cache",

@@ -10,12 +10,34 @@ https://go.dev/
 ```
 
 ## How to Run
-### 1) Create .env for PostgreSQL connection
+
+### 1) Create `.env` for the backend
 ```
-cd backend
+cd source/backend
 touch .env
-echo "DATABASE_URL=<url>" > .env
-echo "PORT=<port>" > .env
+```
+
+Add the following to `.env`:
+```
+# PostgreSQL connection string
+DATABASE_URL=postgresql://<user>:<password>@<host>:<port>/<db>
+
+# Admin credentials for the web UI login
+ADMIN_USERNAME=your-username
+ADMIN_PASSWORD=your-password
+
+# Secret key for Flask session signing (use a long random string)
+SECRET_KEY=your-random-secret-key
+
+# API key agents use to authenticate with the backend (shared secret)
+AGENT_API_KEY=your-agent-api-key
+
+# One-time registration token
+REGISTER_TOKEN=your-register-token
+
+# (Optional) If this backend also reports to a remote Hashiko server, set these:
+HASHIKO_API_URL=https://<remote-hashiko-host>/api
+HASHIKO_REGISTER_TOKEN=your-register-token
 ```
 
 ### 2) Run backend
@@ -31,23 +53,13 @@ cd source/agent
 sudo go run *.go
 ```
 
-### 4) Live serve index.html
-```
-http://127.0.0.1:5500/source/frontend/index.html
-```
+On first run the agent sends `HASHIKO_REGISTER_TOKEN` to the backend, which checks it against `REGISTER_TOKEN`. If they match, the backend returns the `AGENT_API_KEY`, which is saved to `/etc/hashiko/api_key`. Subsequent runs use the saved key automatically.
 
-## Milestone Progress & Project Notes
-### Milestone 3 (Completed)
-- User authentication: login and logout
-- Hashes displayed in separate tables by agent
-- Highlighting of different hashes for clarity
-- Pivoted from original proposal after discussion with Ashkhan and Brian
-
-### Milestone 4 (Planned)
-- Hashing of individual files
-- Replace agent ID with MAC address or computer name
-- Deploy backend to production
-- Deploy frontend to production
+### 5) Open the web UI
+```
+http://127.0.0.1:8899
+```
+Log in with the `ADMIN_USERNAME` and `ADMIN_PASSWORD` from your backend `.env`.
 
 # Authour
 Jackie Ma | A00889988

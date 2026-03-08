@@ -1,3 +1,4 @@
+import hmac
 import os
 import uuid
 from datetime import datetime, timedelta
@@ -19,11 +20,13 @@ def get_config():
         "ADMIN_USERNAME": os.getenv("ADMIN_USERNAME"),
         "ADMIN_PASSWORD": os.getenv("ADMIN_PASSWORD"),
         "SECRET_KEY": os.getenv("SECRET_KEY"),
+        "AGENT_API_KEY": os.getenv("AGENT_API_KEY"),
+        "REGISTER_TOKEN": os.getenv("REGISTER_TOKEN"),
         "PORT": int(os.getenv("PORT", 8899)),
     }
 
     for key, value in config.items():
-        if not value and key != "PORT":
+        if not value and key not in ("PORT", "REGISTER_TOKEN"):
             raise ValueError(f"{key} environment variable is not set")
 
     return config
@@ -65,12 +68,24 @@ def cleanup_expired_sessions(max_age_hours=24):
 # flask app setup
 app = Flask(__name__, static_folder="../frontend", static_url_path="")
 app.secret_key = CONFIG["SECRET_KEY"]
+app.config["SESSION_COOKIE_SECURE"] = True
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Strict"
+
+
+@app.after_request
+def add_security_headers(response):
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 
 # context manager for database connections
 @contextmanager
 def get_db():
-    conn = connect(CONFIG["DATABASE_URL"])
+    url = CONFIG["DATABASE_URL"]
+    if "sslmode" not in url:
+        url += ("&" if "?" in url else "?") + "sslmode=require"
+    conn = connect(url)
     try:
         yield conn
     finally:
@@ -91,28 +106,91 @@ def execute_query(query, params=None, fetch=False):
 # initialize database tables and indexes
 def init_db():
     try:
+        # create hash_records with JSONB hashes column
         execute_query(
             """
             CREATE TABLE IF NOT EXISTS hash_records (
                 id SERIAL PRIMARY KEY,
                 timestamp TIMESTAMP NOT NULL,
                 agent_id TEXT NOT NULL,
-                event_type TEXT NOT NULL,
-                hash_boot TEXT NOT NULL,
-                hash_bin TEXT NOT NULL,
-                hash_sbin TEXT NOT NULL,
-                hash_etc TEXT NOT NULL,
-                hash_root TEXT NOT NULL
+                hashes JSONB NOT NULL
             );
+            """
+        )
+
+        # migrate old schema (individual hash columns) to JSONB if needed
+        execute_query(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='hash_records' AND column_name='hash_boot'
+                ) THEN
+                    ALTER TABLE hash_records ADD COLUMN IF NOT EXISTS hashes JSONB;
+                    UPDATE hash_records SET hashes = jsonb_build_object(
+                        '/boot', hash_boot,
+                        '/usr/bin', hash_bin,
+                        '/usr/sbin', hash_sbin,
+                        '/etc', hash_etc,
+                        '/root', hash_root
+                    ) WHERE hashes IS NULL;
+                    ALTER TABLE hash_records DROP COLUMN IF EXISTS hash_boot;
+                    ALTER TABLE hash_records DROP COLUMN IF EXISTS hash_bin;
+                    ALTER TABLE hash_records DROP COLUMN IF EXISTS hash_sbin;
+                    ALTER TABLE hash_records DROP COLUMN IF EXISTS hash_etc;
+                    ALTER TABLE hash_records DROP COLUMN IF EXISTS hash_root;
+                END IF;
+            END $$;
             """
         )
 
         execute_query(
             """
-            CREATE INDEX IF NOT EXISTS idx_timestamp_agent_event
-            ON hash_records (timestamp, agent_id, event_type);
+            CREATE INDEX IF NOT EXISTS idx_timestamp_agent
+            ON hash_records (timestamp, agent_id);
             """
         )
+
+        # migration: convert old single-row watch_config to per-agent schema
+        execute_query(
+            """
+            DO $$ BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'watch_config' AND column_name = 'id'
+                ) THEN
+                    DROP TABLE watch_config;
+                END IF;
+            END $$;
+            """
+        )
+
+        # create per-agent watch_config table (stores only custom paths)
+        execute_query(
+            """
+            CREATE TABLE IF NOT EXISTS watch_config (
+                agent_id TEXT PRIMARY KEY,
+                paths JSONB NOT NULL DEFAULT '[]'
+            );
+            """
+        )
+
+        # migrate: strip default paths from existing rows, delete rows that become empty
+        execute_query(
+            """
+            UPDATE watch_config
+            SET paths = COALESCE(
+                (
+                    SELECT jsonb_agg(p)
+                    FROM jsonb_array_elements_text(paths) AS p
+                    WHERE p NOT IN ('/boot', '/usr/bin', '/usr/sbin', '/etc', '/root')
+                ),
+                '[]'::jsonb
+            );
+            """
+        )
+        execute_query("DELETE FROM watch_config WHERE paths = '[]'::jsonb;")
 
         print("Database initialized successfully!")
     except Exception as e:
@@ -120,22 +198,19 @@ def init_db():
 
 
 # insert a hash record into the database
-def insert_hash_record(timestamp, agent_id, event_type, hashes):
+def insert_hash_record(timestamp, agent_id, hashes):
+    import json
+
     execute_query(
         """
-        INSERT INTO hash_records 
-        (timestamp, agent_id, event_type, hash_boot, hash_bin, hash_sbin, hash_etc, hash_root)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO hash_records
+        (timestamp, agent_id, hashes)
+        VALUES (%s, %s, %s)
         """,
         (
             timestamp,
             agent_id,
-            event_type,
-            hashes.get("/boot", ""),
-            hashes.get("/usr/bin", ""),
-            hashes.get("/usr/sbin", ""),
-            hashes.get("/etc", ""),
-            hashes.get("/root", ""),
+            json.dumps(hashes),
         ),
     )
 
@@ -144,9 +219,8 @@ def insert_hash_record(timestamp, agent_id, event_type, hashes):
 def get_all_hash_records():
     return execute_query(
         """
-        SELECT id, timestamp, agent_id, event_type, 
-               hash_boot, hash_bin, hash_sbin, hash_etc, hash_root 
-        FROM hash_records 
+        SELECT id, timestamp, agent_id, hashes
+        FROM hash_records
         ORDER BY agent_id, timestamp ASC
         """,
         fetch=True,
@@ -160,34 +234,44 @@ def detect_hash_changes(records):
 
     for row in records:
         agent_id = row["agent_id"]
-        current_hashes = {
-            "boot": row["hash_boot"],
-            "bin": row["hash_bin"],
-            "sbin": row["hash_sbin"],
-            "etc": row["hash_etc"],
-            "root": row["hash_root"],
-        }
+        hashes = row["hashes"] if isinstance(row["hashes"], dict) else {}
 
-        # detect changes
+        # detect changes against previous record for this agent
         changed = {}
         if agent_id in prev_hashes_by_agent:
             prev = prev_hashes_by_agent[agent_id]
-            changed = {key: current_hashes[key] != prev[key] for key in current_hashes}
+            all_keys = set(hashes) | set(prev)
+            changed = {key: hashes.get(key) != prev.get(key) for key in all_keys}
 
-        prev_hashes_by_agent[agent_id] = current_hashes
+        prev_hashes_by_agent[agent_id] = hashes
 
         result.append(
             {
                 "id": str(row["id"]),
                 "timestamp": row["timestamp"],
                 "agent_id": agent_id,
-                "event_type": row["event_type"],
-                **current_hashes,
+                "hashes": hashes,
                 "changed": changed,
             }
         )
 
     return list(reversed(result))
+
+
+# decorator to require a valid agent API key (Bearer token) for agent-facing routes
+def agent_key_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return jsonify({"success": False, "error": "Unauthorized"}), 401
+        provided_key = auth_header[7:]
+        # use compare_digest to prevent timing-based side-channel attacks
+        if not hmac.compare_digest(provided_key, CONFIG["AGENT_API_KEY"]):
+            return jsonify({"success": False, "error": "Unauthorized"}), 401
+        return f(*args, **kwargs)
+
+    return decorated_function
 
 
 # decorator to require authentication for routes
@@ -205,6 +289,109 @@ def login_required(f):
 # validate credentials
 def is_valid_credentials(username, password):
     return username == CONFIG["ADMIN_USERNAME"] and password == CONFIG["ADMIN_PASSWORD"]
+
+
+# register endpoint - exchange a one-time registration token for the agent API key
+@app.route("/api/register", methods=["POST"])
+def handle_register():
+    if not CONFIG["REGISTER_TOKEN"]:
+        return jsonify({"success": False, "error": "Registration is not enabled"}), 403
+    data = request.get_json() or {}
+    token = data.get("register_token", "")
+    if not hmac.compare_digest(token, CONFIG["REGISTER_TOKEN"]):
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    return jsonify({"success": True, "api_key": CONFIG["AGENT_API_KEY"]})
+
+
+# list known agents endpoint - used by frontend config panel
+@app.route("/api/agents", methods=["GET"])
+@login_required
+def handle_get_agents():
+    try:
+        rows = execute_query(
+            "SELECT DISTINCT agent_id FROM hash_records ORDER BY agent_id",
+            fetch=True,
+        )
+        agents = [r["agent_id"] for r in rows]
+        return jsonify({"agents": agents})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# get watch config endpoint - returns monitored paths for a specific agent (used by agent)
+DEFAULT_WATCH_PATHS = ["/boot", "/usr/bin", "/usr/sbin", "/etc", "/root"]
+
+
+@app.route("/api/config", methods=["GET"])
+@agent_key_required
+def handle_get_config():
+    agent_id = request.args.get("agent_id", "").strip()
+    if not agent_id:
+        return jsonify({"success": False, "error": "agent_id query parameter required"}), 400
+    try:
+        # fetch only custom paths from DB
+        rows = execute_query(
+            "SELECT paths FROM watch_config WHERE agent_id = %s",
+            (agent_id,),
+            fetch=True,
+        )
+        custom = rows[0]["paths"] if rows else []
+        # defaults are hardcoded; merge custom on top
+        paths = DEFAULT_WATCH_PATHS + [p for p in custom if p not in DEFAULT_WATCH_PATHS]
+        return jsonify({"paths": paths})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# get watch config for admin UI (session-authenticated)
+@app.route("/api/admin/config", methods=["GET"])
+@login_required
+def handle_admin_get_config():
+    agent_id = request.args.get("agent_id", "").strip()
+    if not agent_id:
+        return jsonify({"success": False, "error": "agent_id query parameter required"}), 400
+    try:
+        rows = execute_query(
+            "SELECT paths FROM watch_config WHERE agent_id = %s",
+            (agent_id,),
+            fetch=True,
+        )
+        custom = rows[0]["paths"] if rows else []
+        paths = DEFAULT_WATCH_PATHS + [p for p in custom if p not in DEFAULT_WATCH_PATHS]
+        return jsonify({"paths": paths})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# set watch config endpoint - admin updates custom paths for a specific agent
+@app.route("/api/config", methods=["POST"])
+@login_required
+def handle_set_config():
+    import json
+    data = request.get_json() or {}
+    agent_id = data.get("agent_id", "").strip()
+    paths = data.get("paths", [])
+    if not agent_id:
+        return jsonify({"success": False, "error": "agent_id required"}), 400
+    if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
+        return jsonify({"success": False, "error": "paths must be a list of strings"}), 400
+    # store only custom (non-default) paths
+    custom = [p.strip() for p in paths if p.strip() and p.strip() not in DEFAULT_WATCH_PATHS]
+    try:
+        if custom:
+            execute_query(
+                """
+                INSERT INTO watch_config (agent_id, paths) VALUES (%s, %s)
+                ON CONFLICT (agent_id) DO UPDATE SET paths = EXCLUDED.paths
+                """,
+                (agent_id, json.dumps(custom)),
+            )
+        else:
+            # no custom paths — remove the row entirely
+            execute_query("DELETE FROM watch_config WHERE agent_id = %s", (agent_id,))
+        return jsonify({"success": True, "paths": DEFAULT_WATCH_PATHS + custom})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 # login endpoint
@@ -246,13 +433,14 @@ def auth_status():
 
 # store hash data endpoint
 @app.route("/api/store", methods=["POST"])
+@agent_key_required
 def handle_store():
     data = request.get_json()
     if not data:
         return jsonify({"success": False, "error": "No data provided"}), 400
 
     # validate required fields
-    required = ["timestamp", "agent_id", "event_type", "hashes"]
+    required = ["timestamp", "agent_id", "hashes"]
     missing = [field for field in required if not data.get(field)]
     if missing:
         return jsonify({"success": False, "error": f"Missing fields: {', '.join(missing)}"}), 400
@@ -263,7 +451,7 @@ def handle_store():
         print(f"[{data['agent_id']}] Received hash report from {client_ip}")
 
         # store record
-        insert_hash_record(data["timestamp"], data["agent_id"], data["event_type"], data["hashes"])
+        insert_hash_record(data["timestamp"], data["agent_id"], data["hashes"])
         return jsonify({"success": True})
 
     except Exception as e:
@@ -286,7 +474,7 @@ def handle_view():
 # static files
 @app.route("/")
 def serve_frontend():
-    return send_from_directory("../frontend", "index.html")
+    return send_from_directory("../frontend", "login.html")
 
 
 # static files
@@ -299,5 +487,5 @@ def serve_static(path):
 if __name__ == "__main__":
     init_db()
     port = CONFIG["PORT"]
-    print(f"Server running on http://localhost:{port}/")
+    print(f"Server running on port {port}")
     app.run(host="0.0.0.0", port=port, debug=False)

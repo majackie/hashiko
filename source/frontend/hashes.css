@@ -88,8 +88,204 @@ th {
     transition: background 0.3s;
 }
 
-#logout-btn:hover {
-    background: #c82333;
+#config-btn {
+    padding: 8px 16px;
+    background: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background 0.3s;
+}
+
+#config-btn:hover {
+    background: #5a6268;
+}
+
+#config-panel {
+    position: fixed;
+    top: 60px;
+    right: 10px;
+    width: 360px;
+    background: white;
+    border: 2px solid #6c757d;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    overflow: hidden;
+    z-index: 999;
+    display: none;
+}
+
+#config-panel.show {
+    display: block;
+}
+
+.config-header {
+    padding: 15px;
+    background: #6c757d;
+    color: white;
+    font-weight: bold;
+    border-radius: 6px 6px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.config-content {
+    padding: 15px;
+}
+
+.config-content label {
+    display: block;
+    font-size: 0.85em;
+    font-weight: bold;
+    margin-bottom: 4px;
+    color: #333;
+}
+
+#config-path-list {
+    list-style: none;
+    margin: 0 0 10px;
+    padding: 0;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.config-path-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 8px;
+    border-bottom: 1px solid #eee;
+    font-family: monospace;
+    font-size: 0.9em;
+}
+
+.config-path-item:last-child {
+    border-bottom: none;
+}
+
+.remove-path-btn {
+    background: none;
+    border: none;
+    color: #dc3545;
+    font-size: 18px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 2px;
+    flex-shrink: 0;
+}
+
+.remove-path-btn:hover {
+    color: #a71d2a;
+}
+
+.config-add-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+#config-path-input {
+    flex: 1;
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.9em;
+    box-sizing: border-box;
+}
+
+#config-add-btn {
+    padding: 6px 12px;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+#config-add-btn:hover {
+    background: #0056b3;
+}
+
+.config-path-divider {
+    font-size: 0.7em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #999;
+    padding: 15px 8px 2px;
+    border-bottom: 1px solid #e0e0e0;
+    pointer-events: none;
+}
+
+.config-path-default {
+    opacity: 0.75;
+}
+
+.config-path-lock {
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.config-action-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+#config-defaults-btn {
+    flex: 1;
+    padding: 8px;
+    background: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 0.85em;
+}
+
+#config-defaults-btn:hover {
+    background: #5a6268;
+}
+
+#config-save-btn {
+    flex: 1;
+    padding: 8px;
+    background: #28a745;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+#config-save-btn:hover {
+    background: #218838;
+}
+
+.config-status {
+    margin-top: 10px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+
+.config-status-success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.config-status-error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
 }
 
 #alert-panel {
@@ -187,4 +383,80 @@ th {
     margin-top: 8px;
     padding-top: 8px;
     border-top: 1px solid #e0e0e0;
+}
+
+/* view management */
+.hidden {
+    display: none;
+}
+
+/* agent grid */
+#agent-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0;
+}
+
+.agent-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    cursor: pointer;
+    transition: box-shadow 0.15s;
+    border: 2px solid transparent;
+}
+
+.agent-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border-color: #007bff;
+}
+
+.agent-card.has-alerts {
+    border-color: #ffc107;
+}
+
+.agent-card-name {
+    font-size: 1.1em;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 8px;
+}
+
+.agent-card-meta {
+    font-size: 0.85em;
+    color: #666;
+}
+
+.agent-card-badge {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 3px 10px;
+    background: #ffc107;
+    color: #000;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: bold;
+}
+
+/* back button */
+#back-btn {
+    display: inline-block;
+    margin-bottom: 16px;
+    padding: 8px 16px;
+    background: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 0.9em;
+    transition: background 0.2s;
+}
+
+#back-btn:hover {
+    background: #5a6268;
 }
