@@ -28,7 +28,7 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
             successMessage.textContent = "Login successful! Redirecting...";
             successMessage.style.display = "block";
             setTimeout(() => {
-                window.location.href = "hashes.html";
+                window.location.replace("hashes.html");
             }, 1000);
         } else {
             errorMessage.textContent = data.error || "Invalid credentials";

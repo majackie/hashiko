@@ -222,6 +222,7 @@ function showAgentDetail(agentId, agentGroups) {
     const container = document.getElementById("tables-container");
     container.innerHTML = "";
     container.appendChild(createHashTable(agentGroups[agentId]));
+    history.pushState({ view: "detail", agentId }, "");
 }
 
 // agent grid rendering
@@ -423,6 +424,15 @@ async function loadHashData() {
 
         renderAgentGrid(agentGroups, alerts, document.getElementById("agent-grid"));
 
+        // handle browser back/forward navigation
+        window.addEventListener("popstate", (e) => {
+            if (e.state?.view === "detail") {
+                showAgentDetail(e.state.agentId, agentGroups);
+            } else {
+                showAgentList();
+            }
+        });
+
         // close panels when clicking outside
         document.addEventListener("click", (e) => {
             // ignore clicks on elements that were just removed from the DOM
@@ -446,5 +456,8 @@ async function loadHashData() {
         console.error("Error loading data:", err);
     }
 }
+
+// replace the login history entry so browser back doesn't return to login
+history.replaceState({ view: "list" }, "");
 
 loadHashData();
