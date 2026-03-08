@@ -1,7 +1,7 @@
 import hmac
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 from functools import wraps
 from dotenv import load_dotenv
@@ -41,14 +41,14 @@ SESSIONS = {}
 # session management helpers
 def create_session(username):
     session_id = str(uuid.uuid4())
-    SESSIONS[session_id] = {"username": username, "created_at": datetime.now(), "last_activity": datetime.now()}
+    SESSIONS[session_id] = {"username": username, "created_at": datetime.now(timezone.utc), "last_activity": datetime.now(timezone.utc)}
     return session_id
 
 
 def get_session(session_id):
     if session_id in SESSIONS:
         # update last activity
-        SESSIONS[session_id]["last_activity"] = datetime.now()
+        SESSIONS[session_id]["last_activity"] = datetime.now(timezone.utc)
         return SESSIONS[session_id]
     return None
 
@@ -59,7 +59,7 @@ def remove_session(session_id):
 
 
 def cleanup_expired_sessions(max_age_hours=24):
-    cutoff = datetime.now() - timedelta(hours=max_age_hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
     expired = [sid for sid, data in SESSIONS.items() if data["last_activity"] < cutoff]
     for sid in expired:
         del SESSIONS[sid]
@@ -111,7 +111,7 @@ def init_db():
             """
             CREATE TABLE IF NOT EXISTS hash_records (
                 id SERIAL PRIMARY KEY,
-                timestamp TIMESTAMP NOT NULL,
+                timestamp TIMESTAMPTZ NOT NULL,
                 agent_id TEXT NOT NULL,
                 hashes JSONB NOT NULL
             );

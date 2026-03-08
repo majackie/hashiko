@@ -184,7 +184,7 @@ function createHashTable(records) {
         }).join("");
         tbody.insertAdjacentHTML("beforeend", `
             <tr>
-                <td>${r.timestamp}</td>
+                <td>${new Date(r.timestamp).toLocaleString()}</td>
                 ${hashCells}
             </tr>
         `);
@@ -233,7 +233,8 @@ function renderAgentGrid(agentGroups, alerts, container) {
 
     Object.entries(agentGroups).forEach(([agentId, records]) => {
         const alertCount = alertsByAgent[agentId] || 0;
-        const lastRecord = records[records.length - 1];
+        const lastRecord = records.reduce((a, b) =>
+            new Date(a.timestamp) >= new Date(b.timestamp) ? a : b);
         const lastSeen = lastRecord ? new Date(lastRecord.timestamp).toLocaleString() : "Unknown";
 
         const card = document.createElement("div");

@@ -226,7 +226,7 @@ func registerAgent(apiBaseURL, registerToken string) (string, error) {
 func hashToJson(agentID string, hashes map[string]string) (string, error) {
 	// create a struct to hold the results
 	result := HashResult{
-		Timestamp: time.Now().Format(time.RFC3339),
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		AgentID:   agentID,
 		Hashes:    hashes,
 	}
