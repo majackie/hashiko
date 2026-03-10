@@ -34,20 +34,31 @@ AGENT_API_KEY=your-agent-api-key
 
 # One-time registration token
 REGISTER_TOKEN=your-register-token
+```
 
-# (Optional) If this backend also reports to a remote Hashiko server, set these:
-HASHIKO_API_URL=https://<remote-hashiko-host>/api
+### 2) Create `.env` for the agent
+```
+cd source/agent
+touch .env
+```
+
+Add the following to `.env`:
+```
+# URL of the Hashiko backend API
+HASHIKO_API_URL=https://<your-backend-host>/api
+
+# One-time registration token (must match REGISTER_TOKEN in the backend .env)
 HASHIKO_REGISTER_TOKEN=your-register-token
 ```
 
-### 2) Run backend
+### 3) Run backend
 ```
 cd source/backend
 pip install -r requirements.txt
 python main.py
 ```
 
-### 3) Run agent
+### 4) Run agent
 ```
 cd source/agent
 sudo go run *.go

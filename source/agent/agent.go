@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 func shouldSkip(path string, additionalSkips []string) bool {
@@ -267,6 +269,9 @@ func jsonApiCall(jsonData string, apiURL string, apiKey string) error {
 }
 
 func main() {
+	// load .env file if present (errors ignored if file doesn't exist)
+	_ = godotenv.Load()
+
 	agentID := getAgentID()
 	apiBaseURL := loadAPIURL()
 	if apiBaseURL == "" {
