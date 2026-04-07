@@ -81,5 +81,22 @@ http://127.0.0.1:8899
 ```
 Log in with the `ADMIN_USERNAME` and `ADMIN_PASSWORD` from your backend `.env`.
 
-# Authour
+## Running Tests
+
+### Agent (Go)
+```
+cd source/agent
+go test ./...
+```
+
+### Backend (Python)
+```
+cd source/backend
+pip install -r requirements-dev.txt
+pytest
+```
+
+Tests also run automatically on every push via GitHub Actions.
+
+# Author
 Jackie Ma | A00889988

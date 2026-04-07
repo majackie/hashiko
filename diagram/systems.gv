@@ -1,60 +1,79 @@
-// dot -Tpng systems.gv -o systems.png
+// dot -Tpng -Gdpi=300 systems.gv -o systems.png
 
-digraph Hashiko {
+digraph Systems {
     rankdir=LR;
-    node [shape=box, fontsize=10, margin="0.3,0.2"];
-    edge [fontsize=8];
-    nodesep=0.8;
-    ranksep=1.2;
+    fontname="Helvetica";
+    fontsize=11;
+    node [fontname="Helvetica", fontsize=11, margin="0.25,0.15", style=filled, fillcolor=white];
+    edge [fontname="Helvetica", fontsize=9];
+    nodesep=0.5;
+    ranksep=1.0;
 
-    subgraph cluster_endpoints {
-        label="Endpoints";
+    subgraph cluster_agent {
+        label="Linux Agent (Go)";
+        fontname="Helvetica";
+        fontsize=11;
         style=rounded;
 
-        Agent [label="Linux Agent\n(Go)"];
-        Queue [label="Local Queue\n./queue"];
-        Config [label="Config\nMonitored Dirs"];
+        Agent [label="Agent\nhashFiles()"];
+        Queue [label="Local Queue\n./queue/"];
+        AgentCfg [label="/etc/hashiko/\napi_key, watch.conf", shape=note];
     }
 
     subgraph cluster_server {
-        label="Central Server";
+        label="Central Server — Render (Flask)";
+        fontname="Helvetica";
+        fontsize=11;
         style=rounded;
 
-        IngestAPI [label="POST /api/store"];
-        ViewAPI [label="GET /api/view"];
-        StaticServer [label="Static Server"];
+        Register [label="POST /api/register"];
+        Store    [label="POST /api/store"];
+        Config   [label="GET /api/config"];
+        Hashes   [label="GET /api/hashes"];
+        CfgSave  [label="POST /api/config\n(admin)"];
+        Login    [label="POST /api/login"];
+        Static   [label="Static Files\n(HTML/CSS/JS)"];
     }
 
-    subgraph cluster_storage {
-        label="PostgreSQL";
+    subgraph cluster_db {
+        label="PostgreSQL — Supabase";
+        fontname="Helvetica";
+        fontsize=11;
         style=rounded;
 
-        HashRecords [label="hash_records\nTable"];
-        Index [label="Composite\nIndex"];
+        HR  [label="hash_records\n(JSONB hashes)", shape=box];
+        WC  [label="watch_config\n(paths, threshold)", shape=box];
     }
 
     subgraph cluster_ui {
-        label="Web Interface";
+        label="Web UI";
+        fontname="Helvetica";
+        fontsize=11;
         style=rounded;
 
-        HTML [label="index.html"];
-        JS [label="script.js"];
-        CSS [label="styles.css"];
+        UI [label="Timeline\nAlerts\nConfig Panel"];
     }
 
-    // Data flow
-    Config -> Agent [xlabel="paths"];
-    Agent -> IngestAPI [xlabel="POST JSON"];
-    Agent -> Queue [xlabel="offline", style=dashed];
-    Queue -> IngestAPI [xlabel="retry", style=dashed];
+    // Agent flows
+    AgentCfg -> Agent    [label="keys + paths", style=dashed];
+    Agent    -> Register [label="register_token\n(first run)", style=dashed];
+    Register -> AgentCfg [label="save api_key", style=dashed];
+    Agent    -> Config   [label="Bearer token"];
+    Config   -> WC       [label="SELECT"];
+    Config   -> Agent    [label="paths + threshold"];
+    Agent    -> Store    [label="HTTPS POST\nBearer token"];
+    Agent    -> Queue    [label="on failure", style=dashed, color=gray];
+    Queue    -> Store    [label="retry", style=dashed, color=gray];
 
-    IngestAPI -> HashRecords [xlabel="INSERT"];
-    HashRecords -> Index [style=dotted];
+    // Server to DB
+    Store    -> HR       [label="INSERT"];
+    Hashes   -> HR       [label="SELECT"];
+    CfgSave  -> WC       [label="UPSERT"];
 
-    ViewAPI -> HashRecords [xlabel="SELECT"];
-    ViewAPI -> JS [xlabel="JSON"];
-
-    StaticServer -> HTML;
-    HTML -> JS;
-    HTML -> CSS;
+    // UI flows
+    UI -> Login   [label="credentials"];
+    UI -> Hashes  [label="session auth"];
+    Hashes -> UI  [label="records + changes"];
+    UI -> CfgSave [label="session auth"];
+    Static -> UI  [style=dotted];
 }

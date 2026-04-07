@@ -1,49 +1,51 @@
-// dot -Tpng database.gv -o database.png
+// dot -Tpng -Gdpi=300 database.gv -o database.png
 
-digraph DatabaseSchema {
-    rankdir=LR;
-    node [shape=plaintext, fontsize=9, fontname="Arial"];
-    edge [fontsize=8];
-    nodesep=0.3;
-    ranksep=1.0;
+digraph Database {
+    rankdir=TB;
+    fontname="Helvetica";
+    fontsize=11;
+    node [shape=plaintext, fontname="Helvetica", fontsize=10];
+    edge [fontname="Helvetica", fontsize=9];
+    nodesep=0.6;
+    ranksep=0.8;
 
     hash_records [label=<
-        <table border="0" cellborder="1" cellspacing="0" cellpadding="8">
+        <table border="0" cellborder="1" cellspacing="0" cellpadding="6">
             <tr><td colspan="2"><b>hash_records</b></td></tr>
-            <tr><td align="left">id</td><td align="left">SERIAL PK</td></tr>
-            <tr><td align="left">timestamp</td><td align="left">TIMESTAMP</td></tr>
-            <tr><td align="left">agent_id</td><td align="left">VARCHAR(255)</td></tr>
-            <tr><td align="left">event_type</td><td align="left">VARCHAR(50)</td></tr>
-            <tr><td align="left">hash_boot</td><td align="left">VARCHAR(64)</td></tr>
-            <tr><td align="left">hash_bin</td><td align="left">VARCHAR(64)</td></tr>
-            <tr><td align="left">hash_sbin</td><td align="left">VARCHAR(64)</td></tr>
-            <tr><td align="left">hash_etc</td><td align="left">VARCHAR(64)</td></tr>
-            <tr><td align="left">hash_root</td><td align="left">VARCHAR(64)</td></tr>
-            <tr><td align="left">client_ip</td><td align="left">VARCHAR(45)</td></tr>
-            <tr><td align="left">created_at</td><td align="left">TIMESTAMP</td></tr>
+            <tr><td align="left"><b>id</b></td><td align="left">SERIAL PRIMARY KEY</td></tr>
+            <tr><td align="left">timestamp</td><td align="left">TIMESTAMPTZ NOT NULL</td></tr>
+            <tr><td align="left">agent_id</td><td align="left">TEXT NOT NULL</td></tr>
+            <tr><td align="left">hashes</td><td align="left">JSONB NOT NULL</td></tr>
+        </table>
+    >];
+
+    watch_config [label=<
+        <table border="0" cellborder="1" cellspacing="0" cellpadding="6">
+            <tr><td colspan="2"><b>watch_config</b></td></tr>
+            <tr><td align="left"><b>agent_id</b></td><td align="left">TEXT PRIMARY KEY</td></tr>
+            <tr><td align="left">paths</td><td align="left">JSONB NOT NULL</td></tr>
+            <tr><td align="left">max_file_size_mb</td><td align="left">INTEGER NOT NULL</td></tr>
         </table>
     >];
 
     idx [label=<
-        <table border="0" cellborder="1" cellspacing="0" cellpadding="8">
+        <table border="0" cellborder="1" cellspacing="0" cellpadding="6">
             <tr><td><b>Index</b></td></tr>
-            <tr><td align="left">idx_composite</td></tr>
-            <tr><td align="left">timestamp DESC</td></tr>
-            <tr><td align="left">agent_id</td></tr>
-            <tr><td align="left">event_type</td></tr>
+            <tr><td align="left">idx_timestamp_agent</td></tr>
+            <tr><td align="left">(timestamp, agent_id)</td></tr>
         </table>
     >];
 
-    constraints [label=<
-        <table border="0" cellborder="1" cellspacing="0" cellpadding="8">
-            <tr><td><b>Constraints</b></td></tr>
-            <tr><td align="left">NOT NULL:</td></tr>
-            <tr><td align="left">timestamp</td></tr>
-            <tr><td align="left">agent_id</td></tr>
-            <tr><td align="left">event_type</td></tr>
+    hashes_example [label=<
+        <table border="0" cellborder="1" cellspacing="0" cellpadding="6">
+            <tr><td><b>hashes (JSONB)</b></td></tr>
+            <tr><td align="left">"/etc/passwd": "a3f1..."</td></tr>
+            <tr><td align="left">"/boot/vmlinuz": "9b2c..."</td></tr>
+            <tr><td align="left">"/usr/bin/ls": "d4e7..."</td></tr>
         </table>
     >];
 
-    hash_records -> idx [label="indexed"];
-    hash_records -> constraints [label="enforces", style=dashed];
+    hash_records -> idx          [label="indexed by", style=dashed];
+    hash_records -> hashes_example [label="example value", style=dotted];
+    watch_config -> hash_records [label="agent_id", style=dashed, dir=none];
 }

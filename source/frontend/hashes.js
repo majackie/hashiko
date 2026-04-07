@@ -193,12 +193,15 @@ function createHashTable(records) {
         if (changedPaths.length > 0) {
             const details = document.createElement("div");
             details.className = "timeline-details hidden";
+            const prevHashes = idx + 1 < records.length ? (records[idx + 1].hashes || {}) : {};
             changedPaths.forEach(path => {
                 const fileRow = document.createElement("div");
                 fileRow.className = "timeline-file";
-                const exists = path in hashes;
+                const inCurrent = path in hashes;
+                const inPrev = path in prevHashes;
+                const label = !inCurrent ? "[DELETED]" : !inPrev ? "[ADDED]" : "[MODIFIED]";
                 fileRow.innerHTML = `
-                    <span class="timeline-file-icon">${exists ? "✏️" : "🗑️"}</span>
+                    <span class="timeline-file-icon">${label}</span>
                     <span class="timeline-file-path">${path}</span>
                 `;
                 details.appendChild(fileRow);
