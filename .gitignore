@@ -127,3 +127,6 @@ Thumbs.db
 .vscode/*
 source/agent/queue/hash_*.json
 *_bin
+source/agent/agent
+__pycache__/
+*.pyc

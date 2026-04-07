@@ -58,10 +58,19 @@ pip install -r requirements.txt
 python main.py
 ```
 
-### 4) Run agent
+### 4) Compile and run agent
+
+To run directly without compiling:
 ```
 cd source/agent
 sudo go run *.go
+```
+
+To compile to a binary first:
+```
+cd source/agent
+go build -o agent_bin *.go
+sudo ./agent_bin
 ```
 
 On first run the agent sends `HASHIKO_REGISTER_TOKEN` to the backend, which checks it against `REGISTER_TOKEN`. If they match, the backend returns the `AGENT_API_KEY`, which is saved to `/etc/hashiko/api_key`. Subsequent runs use the saved key automatically.
