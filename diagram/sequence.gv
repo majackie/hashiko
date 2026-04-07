@@ -1,68 +1,98 @@
-// dot -Tpng sequence.gv -o sequence.png
+// dot -Tpng -Gdpi=300 sequence.gv -o sequence.png
 
-digraph SequenceDiagram {
+digraph Sequence {
     rankdir=LR;
-    node [shape=box, fontsize=9, fontname="Arial", margin="0.2,0.1"];
-    edge [fontsize=8];
-    nodesep=0.4;
-    ranksep=0.6;
+    fontname="Helvetica";
+    fontsize=11;
+    node [fontname="Helvetica", fontsize=11, margin="0.2,0.12"];
+    edge [fontname="Helvetica", fontsize=9];
+    nodesep=0.5;
+    ranksep=0.9;
 
     // Actors
-    Agent [label="Agent"];
-    Queue [label="Queue"];
-    Server [label="Server"];
-    DB [label="Database"];
-    WebUI [label="Web UI"];
+    Agent  [shape=box, style=filled, fillcolor=white, label="Agent"];
+    Queue  [shape=box, style=filled, fillcolor=white, label="Local Queue"];
+    Server [shape=box, style=filled, fillcolor=white, label="Server"];
+    DB     [shape=cylinder, style=filled, fillcolor=white, label="PostgreSQL"];
+    Admin  [shape=box, style=filled, fillcolor=white, label="Admin / Web UI"];
 
-    // Success path
-    subgraph cluster_success {
-        label="Success Path";
+    // --- Registration ---
+    subgraph cluster_reg {
+        label="1. Registration (first run)";
         style=dashed;
+        fontname="Helvetica";
+        fontsize=10;
 
-        step1 [label="1. Hash dirs"];
-        step2 [label="2. JSON"];
-        step3 [label="3. POST"];
-        step4 [label="4. Validate"];
-        step5 [label="5. INSERT"];
+        r1 [label="send register_token", shape=plaintext];
+        r2 [label="receive api_key", shape=plaintext];
     }
 
-    // Failure path
-    subgraph cluster_failure {
-        label="Failure Path";
+    // --- Config ---
+    subgraph cluster_cfg {
+        label="2. Config Fetch";
         style=dashed;
+        fontname="Helvetica";
+        fontsize=10;
 
-        step6 [label="6. Save queue"];
-        step7 [label="7. Retry"];
+        c1 [label="GET /api/config\n(Bearer token)", shape=plaintext];
+        c2 [label="paths + max_file_size_mb", shape=plaintext];
     }
 
-    // View path
+    // --- Hash ---
+    subgraph cluster_hash {
+        label="3. Hash and Submit";
+        style=dashed;
+        fontname="Helvetica";
+        fontsize=10;
+
+        h1 [label="hash each file (SHA-256)", shape=plaintext];
+        h2 [label="POST /api/store\n(Bearer token)", shape=plaintext];
+        h3 [label="INSERT hash_records", shape=plaintext];
+    }
+
+    // --- Failure ---
+    subgraph cluster_fail {
+        label="4. Failure Path";
+        style=dashed;
+        fontname="Helvetica";
+        fontsize=10;
+
+        f1 [label="save to queue", shape=plaintext];
+        f2 [label="retry on next run", shape=plaintext];
+    }
+
+    // --- View ---
     subgraph cluster_view {
-        label="View Path";
+        label="5. Admin View";
         style=dashed;
+        fontname="Helvetica";
+        fontsize=10;
 
-        step8 [label="8. GET"];
-        step9 [label="9. SELECT"];
-        step10 [label="10. Display"];
+        v1 [label="GET /api/hashes\n(session auth)", shape=plaintext];
+        v2 [label="SELECT + compare", shape=plaintext];
+        v3 [label="display timeline\n+ alerts", shape=plaintext];
     }
 
-    // Flows
-    Agent -> step1;
-    step1 -> step2;
-    step2 -> step3;
-    step3 -> Server;
-    Server -> step4;
-    step4 -> step5;
-    step5 -> DB;
+    // Registration
+    Agent -> r1 -> Server;
+    Server -> r2 -> Agent;
 
-    step3 -> step6 [style=dashed, label="fail"];
-    step6 -> Queue;
-    Queue -> step7;
-    step7 -> Server [style=dashed];
+    // Config
+    Agent -> c1 -> Server;
+    Server -> c2 -> Agent;
 
-    WebUI -> step8;
-    step8 -> Server;
-    Server -> step9;
-    step9 -> DB;
-    DB -> step10;
-    step10 -> WebUI;
+    // Hash
+    Agent -> h1 -> h2 -> Server;
+    Server -> h3 -> DB;
+
+    // Failure
+    h2 -> f1 [style=dashed, color=gray, label="on failure"];
+    f1 -> Queue;
+    Queue -> f2 [style=dashed, color=gray];
+    f2 -> Server [style=dashed, color=gray];
+
+    // View
+    Admin -> v1 -> Server;
+    Server -> v2 -> DB;
+    DB -> v3 -> Admin;
 }

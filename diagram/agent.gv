@@ -1,89 +1,62 @@
-// dot -Tpng agent.gv -o agent.png
+// dot -Tpng -Gdpi=300 agent.gv -o agent.png
 
-digraph AgentArchitecture {
+digraph Agent {
     rankdir=TB;
-    node [shape=box, fontsize=11];
-    edge [fontsize=9];
-    compound=true;
-    nodesep=0.5;
-    ranksep=0.6;
+    fontname="Helvetica";
+    fontsize=11;
+    node [shape=box, fontname="Helvetica", fontsize=11, margin="0.2,0.12", style=filled, fillcolor=white];
+    edge [fontname="Helvetica", fontsize=9];
+    nodesep=0.4;
+    ranksep=0.5;
 
-    subgraph cluster_agent {
-        label="Linux Agent";
-        style=rounded;
+    // Inputs
+    FS    [label="File System", shape=cylinder];
+    Cfg   [label="config.go\n(skip paths, size limit)"];
+    WCfg  [label="/api/config\n(watch paths, threshold)"];
+    ID    [label="getAgentID()\nuser@host (machine-id)"];
 
-        subgraph cluster_collectors {
-            label="Data Collectors";
-            style=dashed;
+    // Core hashing
+    HF    [label="hashFiles()\nwalk directory"];
+    Skip  [label="shouldSkip()?\nsize > threshold?", shape=diamond];
+    HFile [label="hashFile()\nSHA-256"];
+    Map   [label="map[path]hash"];
 
-            HashDir [label="hashDirectory()\n(SHA-256)"];
-            SkipFilter [label="shouldSkip()\n(volatile path filter)"];
-        }
+    // Output
+    JSON  [label="hashToJson()\ntimestamp, agent_id, hashes"];
+    POST  [label="jsonApiCall()\nHTTPS POST /api/store"];
 
-        subgraph cluster_monitored {
-            label="Monitored Directories";
-            style=dashed;
+    // Queue
+    Q     [label="Local Queue\n./queue/"];
+    Retry [label="processQueue()\nretry on next run"];
 
-            DirBoot [label="/boot"];
-            DirBin [label="/usr/bin"];
-            DirSbin [label="/usr/sbin"];
-            DirEtc [label="/etc"];
-            DirRoot [label="/root"];
-        }
+    // Server
+    Srv   [label="Central Server", shape=cylinder];
 
-        subgraph cluster_output {
-            label="Output Processing";
-            style=dashed;
+    // Registration (side note)
+    Reg   [label="Registration\n(first run only)\ntoken → api_key", shape=note];
 
-            HashToJson [label="hashToJson()\n(timestamp, agent_id,\nevent_type, hashes)"];
-            JsonApiCall [label="jsonApiCall()\n(HTTP POST)"];
-        }
+    // Main flow
+    FS   -> HF   [label="walk"];
+    WCfg -> HF   [label="paths"];
+    Cfg  -> Skip [label="rules"];
+    HF   -> Skip;
+    Skip -> HFile [label="include"];
+    Skip -> HF   [label="skip", style=dashed, color=gray];
+    HFile -> Map  [label="SHA-256"];
+    Map  -> JSON;
+    ID   -> JSON  [label="agent_id"];
+    JSON -> POST;
+    POST -> Srv   [label="HTTPS"];
 
-        subgraph cluster_queue {
-            label="Queue System";
-            style=dashed;
+    // Failure path
+    POST -> Q     [label="on failure", style=dashed, color=gray];
+    Q    -> Retry [style=dashed, color=gray];
+    Retry -> POST [label="retry", style=dashed, color=gray];
 
-            InitQueue [label="initQueue()\n(create ./queue)"];
-            SaveToQueue [label="saveToQueue()\n(offline storage)"];
-            ProcessQueue [label="processQueue()\n(retry pending)"];
-        }
+    // Registration
+    Reg  -> Srv   [style=dotted, color=gray];
 
-        Config [label="config.go\n(skipPaths, skipEtcPaths)"];
-    }
-
-    subgraph cluster_external {
-        label="External";
-        style=rounded;
-
-        Server [label="Central Server\n/api/store"];
-        FileSystem [label="Linux File System"];
-        NTP [label="NTP Server\n(time sync)"];
-    }
-
-    // Data flow
-    FileSystem -> DirBoot [style=dotted];
-    FileSystem -> DirBin [style=dotted];
-    FileSystem -> DirSbin [style=dotted];
-    FileSystem -> DirEtc [style=dotted];
-    FileSystem -> DirRoot [style=dotted];
-
-    DirBoot -> HashDir;
-    DirBin -> HashDir;
-    DirSbin -> HashDir;
-    DirEtc -> HashDir;
-    DirRoot -> HashDir;
-
-    Config -> SkipFilter [xlabel="skip paths"];
-    SkipFilter -> HashDir [xlabel="filter"];
-
-    HashDir -> HashToJson [xlabel="SHA-256 hashes"];
-    NTP -> HashToJson [xlabel="timestamp", style=dashed];
-
-    HashToJson -> JsonApiCall [xlabel="JSON payload"];
-    JsonApiCall -> Server [xlabel="HTTP POST"];
-
-    JsonApiCall -> SaveToQueue [xlabel="on failure", style=dashed];
-    SaveToQueue -> InitQueue;
-    ProcessQueue -> JsonApiCall [xlabel="retry", style=dashed];
-    ProcessQueue -> Server [xlabel="queued data", style=dashed];
+    // Layout hints
+    { rank=same; Cfg; WCfg; ID; }
+    { rank=same; Q; Retry; }
 }
