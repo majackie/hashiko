@@ -54,10 +54,12 @@ function extractAlerts(data) {
 }
 
 function getChangedDirectories(changed) {
-    return Object.entries(changed)
+    const paths = Object.entries(changed)
         .filter(([_, isChanged]) => isChanged)
         .map(([dir]) => dir)
-        .join(", ");
+        .sort();
+    if (paths.length <= 3) return paths.join(", ");
+    return `${paths.slice(0, 3).join(", ")} ... and ${paths.length - 3} more`;
 }
 
 // ui components
@@ -152,45 +154,69 @@ function groupByAgent(data) {
 }
 
 function createHashTable(records) {
-    // collect all path keys that appear across all records
-    const pathKeys = [];
-    records.forEach(r => {
-        Object.keys(r.hashes || {}).forEach(k => {
-            if (!pathKeys.includes(k)) pathKeys.push(k);
-        });
-    });
-    pathKeys.sort();
+    const container = document.createElement("div");
+    container.className = "hash-timeline";
 
-    const table = document.createElement("table");
-    const headerCells = pathKeys.map(k => `<th>${k}</th>`).join("");
-    table.innerHTML = `
-        <thead>
-            <tr>
-                <th>Timestamp</th>
-                ${headerCells}
-            </tr>
-        </thead>
-        <tbody></tbody>
-    `;
-
-    const tbody = table.querySelector("tbody");
-    records.forEach(r => {
+    records.forEach((r, idx) => {
         const changed = r.changed || {};
         const hashes = r.hashes || {};
-        const hashCells = pathKeys.map(k => {
-            const hash = hashes[k] || "";
-            const isChanged = changed[k] === true;
-            return `<td class="${isChanged ? "changed" : ""} hash" title="${hash}">${shortHash(hash)}</td>`;
-        }).join("");
-        tbody.insertAdjacentHTML("beforeend", `
-            <tr>
-                <td>${new Date(r.timestamp).toLocaleString()}</td>
-                ${hashCells}
-            </tr>
-        `);
+        const changedPaths = Object.entries(changed)
+            .filter(([_, v]) => v)
+            .map(([k]) => k)
+            .sort();
+        const totalFiles = Object.keys(hashes).length;
+        const isBaseline = idx === records.length - 1;
+
+        const row = document.createElement("div");
+        row.className = `timeline-row${changedPaths.length > 0 ? " timeline-row-changed" : ""}`;
+
+        let statusHtml;
+        if (changedPaths.length > 0) {
+            statusHtml = `<span class="timeline-changed">${changedPaths.length} changed</span>`;
+        } else if (isBaseline) {
+            statusHtml = `<span class="timeline-ok">baseline</span>`;
+        } else {
+            statusHtml = `<span class="timeline-ok">clean</span>`;
+        }
+
+        const summary = document.createElement("div");
+        summary.className = "timeline-summary";
+        summary.innerHTML = `
+            <span class="timeline-timestamp">${new Date(r.timestamp).toLocaleString()}</span>
+            <span class="timeline-files">${totalFiles} file${totalFiles !== 1 ? "s" : ""}</span>
+            ${statusHtml}
+            ${changedPaths.length > 0 ? `<button class="timeline-expand-btn">▼ Details</button>` : ""}
+        `;
+
+        row.appendChild(summary);
+
+        if (changedPaths.length > 0) {
+            const details = document.createElement("div");
+            details.className = "timeline-details hidden";
+            changedPaths.forEach(path => {
+                const fileRow = document.createElement("div");
+                fileRow.className = "timeline-file";
+                const exists = path in hashes;
+                fileRow.innerHTML = `
+                    <span class="timeline-file-icon">${exists ? "✏️" : "🗑️"}</span>
+                    <span class="timeline-file-path">${path}</span>
+                `;
+                details.appendChild(fileRow);
+            });
+
+            const expandBtn = summary.querySelector(".timeline-expand-btn");
+            expandBtn.onclick = () => {
+                details.classList.toggle("hidden");
+                expandBtn.textContent = details.classList.contains("hidden") ? "▼ Details" : "▲ Hide";
+            };
+
+            row.appendChild(details);
+        }
+
+        container.appendChild(row);
     });
 
-    return table;
+    return container;
 }
 
 // view management
@@ -304,6 +330,8 @@ async function loadAgentPaths(agentId) {
         }
         const data = await response.json();
         renderPathList(data.paths || []);
+        const sizeInput = document.getElementById("config-max-size-input");
+        if (sizeInput) sizeInput.value = data.max_file_size_mb || 100;
     } catch (e) {
         console.error("Failed to load config:", e);
         showConfigStatus("Failed to load paths. Check connection.", true);
@@ -340,12 +368,14 @@ async function saveConfig() {
         showConfigStatus("Add at least one path.", true);
         return;
     }
+    const sizeInput = document.getElementById("config-max-size-input");
+    const max_file_size_mb = sizeInput ? Math.max(0, parseInt(sizeInput.value, 10) || 0) : 0;
     try {
         const response = await fetch(`${API_BASE}/config`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include",
-            body: JSON.stringify({ agent_id: agentId, paths })
+            body: JSON.stringify({ agent_id: agentId, paths, max_file_size_mb })
         });
         const data = await response.json();
         if (data.success) {
@@ -374,6 +404,11 @@ function createConfigPanel() {
                 <input type="text" id="config-path-input" placeholder="/path/to/watch"
                     onkeydown="if(event.key==='Enter'){event.preventDefault();addWatchPath();}">
                 <button id="config-add-btn" onclick="addWatchPath()">Add</button>
+            </div>
+            <div class="config-size-row">
+                <label for="config-max-size-input">Skip files larger than</label>
+                <input type="number" id="config-max-size-input" min="1" value="100">
+                <span class="config-size-unit">MB</span>
             </div>
             <div class="config-action-row">
                 <button id="config-save-btn" onclick="saveConfig()">Save</button>

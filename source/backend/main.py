@@ -171,8 +171,16 @@ def init_db():
             """
             CREATE TABLE IF NOT EXISTS watch_config (
                 agent_id TEXT PRIMARY KEY,
-                paths JSONB NOT NULL DEFAULT '[]'
+                paths JSONB NOT NULL DEFAULT '[]',
+                max_file_size_mb INTEGER NOT NULL DEFAULT 0
             );
+            """
+        )
+
+        # migrate: add max_file_size_mb column if it doesn't exist yet
+        execute_query(
+            """
+            ALTER TABLE watch_config ADD COLUMN IF NOT EXISTS max_file_size_mb INTEGER NOT NULL DEFAULT 0;
             """
         )
 
@@ -329,16 +337,15 @@ def handle_get_config():
     if not agent_id:
         return jsonify({"success": False, "error": "agent_id query parameter required"}), 400
     try:
-        # fetch only custom paths from DB
         rows = execute_query(
-            "SELECT paths FROM watch_config WHERE agent_id = %s",
+            "SELECT paths, max_file_size_mb FROM watch_config WHERE agent_id = %s",
             (agent_id,),
             fetch=True,
         )
         custom = rows[0]["paths"] if rows else []
-        # defaults are hardcoded; merge custom on top
+        max_file_size_mb = rows[0]["max_file_size_mb"] if rows else 0
         paths = DEFAULT_WATCH_PATHS + [p for p in custom if p not in DEFAULT_WATCH_PATHS]
-        return jsonify({"paths": paths})
+        return jsonify({"paths": paths, "max_file_size_mb": max_file_size_mb})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -352,13 +359,14 @@ def handle_admin_get_config():
         return jsonify({"success": False, "error": "agent_id query parameter required"}), 400
     try:
         rows = execute_query(
-            "SELECT paths FROM watch_config WHERE agent_id = %s",
+            "SELECT paths, max_file_size_mb FROM watch_config WHERE agent_id = %s",
             (agent_id,),
             fetch=True,
         )
         custom = rows[0]["paths"] if rows else []
+        max_file_size_mb = rows[0]["max_file_size_mb"] if rows else 0
         paths = DEFAULT_WATCH_PATHS + [p for p in custom if p not in DEFAULT_WATCH_PATHS]
-        return jsonify({"paths": paths})
+        return jsonify({"paths": paths, "max_file_size_mb": max_file_size_mb})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -371,25 +379,26 @@ def handle_set_config():
     data = request.get_json() or {}
     agent_id = data.get("agent_id", "").strip()
     paths = data.get("paths", [])
+    max_file_size_mb = data.get("max_file_size_mb", 0)
     if not agent_id:
         return jsonify({"success": False, "error": "agent_id required"}), 400
     if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
         return jsonify({"success": False, "error": "paths must be a list of strings"}), 400
-    # store only custom (non-default) paths
+    if not isinstance(max_file_size_mb, int) or max_file_size_mb < 0:
+        return jsonify({"success": False, "error": "max_file_size_mb must be a non-negative integer"}), 400
     custom = [p.strip() for p in paths if p.strip() and p.strip() not in DEFAULT_WATCH_PATHS]
     try:
-        if custom:
+        if custom or max_file_size_mb > 0:
             execute_query(
                 """
-                INSERT INTO watch_config (agent_id, paths) VALUES (%s, %s)
-                ON CONFLICT (agent_id) DO UPDATE SET paths = EXCLUDED.paths
+                INSERT INTO watch_config (agent_id, paths, max_file_size_mb) VALUES (%s, %s, %s)
+                ON CONFLICT (agent_id) DO UPDATE SET paths = EXCLUDED.paths, max_file_size_mb = EXCLUDED.max_file_size_mb
                 """,
-                (agent_id, json.dumps(custom)),
+                (agent_id, json.dumps(custom), max_file_size_mb),
             )
         else:
-            # no custom paths — remove the row entirely
             execute_query("DELETE FROM watch_config WHERE agent_id = %s", (agent_id,))
-        return jsonify({"success": True, "paths": DEFAULT_WATCH_PATHS + custom})
+        return jsonify({"success": True, "paths": DEFAULT_WATCH_PATHS + custom, "max_file_size_mb": max_file_size_mb})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

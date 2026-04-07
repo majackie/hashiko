@@ -37,17 +37,14 @@ func shouldSkip(path string, additionalSkips []string) bool {
 	return false
 }
 
-func hashDirectory(dirPath string, additionalSkips []string) string {
-	// create a new SHA256 hash
-	hash := sha256.New()
+func hashFiles(dirPath string, additionalSkips []string) map[string]string {
+	result := make(map[string]string)
 
-	// walk through the directory
 	filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			return nil
 		}
 
-		// skip unwanted paths
 		if shouldSkip(path, additionalSkips) {
 			if info.IsDir() {
 				return filepath.SkipDir
@@ -55,25 +52,38 @@ func hashDirectory(dirPath string, additionalSkips []string) string {
 			return nil
 		}
 
-		// write file path to hash
-		hash.Write([]byte(path))
-
-		// if it's a regular file, read its content and write to hash
-		if info.Mode().IsRegular() {
-			file, err := os.Open(path)
-			if err != nil {
-				return err
-			}
-			defer file.Close()
-			io.Copy(hash, file)
+		if !info.Mode().IsRegular() {
+			return nil
 		}
 
-		// continue walking
+		if info.Size() > maxFileSizeBytes {
+			return nil
+		}
+
+		hash, err := hashFile(path)
+		if err != nil {
+			return nil
+		}
+		result[path] = hash
+
 		return nil
 	})
 
-	// return the final hash as a hex string
-	return hex.EncodeToString(hash.Sum(nil))
+	return result
+}
+
+func hashFile(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, file); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 type HashResult struct {
@@ -170,31 +180,34 @@ func saveWatchPaths(paths []string) error {
 	return os.WriteFile(watchConfigFilePath, []byte(content), 0644)
 }
 
-// fetchWatchPaths fetches monitored paths for this agent from the server
-func fetchWatchPaths(apiBaseURL, apiKey, agentID string) ([]string, error) {
+type serverConfig struct {
+	Paths         []string `json:"paths"`
+	MaxFileSizeMB int      `json:"max_file_size_mb"`
+}
+
+// fetchConfig fetches monitored paths and settings for this agent from the server
+func fetchConfig(apiBaseURL, apiKey, agentID string) (serverConfig, error) {
 	req, err := http.NewRequest("GET", apiBaseURL+"/config?agent_id="+url.QueryEscape(agentID), nil)
 	if err != nil {
-		return nil, err
+		return serverConfig{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return serverConfig{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("config fetch returned status: %d", resp.StatusCode)
+		return serverConfig{}, fmt.Errorf("config fetch returned status: %d", resp.StatusCode)
 	}
-	var result struct {
-		Paths []string `json:"paths"`
-	}
+	var result serverConfig
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
+		return serverConfig{}, err
 	}
 	if len(result.Paths) == 0 {
-		return nil, fmt.Errorf("server returned empty path list")
+		return serverConfig{}, fmt.Errorf("server returned empty path list")
 	}
-	return result.Paths, nil
+	return result, nil
 }
 
 // registerAgent exchanges a one-time registration token for the agent API key
@@ -309,11 +322,16 @@ func main() {
 
 	// Step 2: Fetch watch paths from server (writes to local file for offline use)
 	// Fall back to local file or hardcoded defaults if server is unreachable
-	watchPaths, err := fetchWatchPaths(apiBaseURL, apiKey, agentID)
+	cfg, err := fetchConfig(apiBaseURL, apiKey, agentID)
+	var watchPaths []string
 	if err != nil {
 		fmt.Printf("Could not fetch watch config from server (%v), using local config\n", err)
 		watchPaths = loadWatchPaths()
 	} else {
+		watchPaths = cfg.Paths
+		if cfg.MaxFileSizeMB > 0 {
+			maxFileSizeBytes = int64(cfg.MaxFileSizeMB) * 1024 * 1024
+		}
 		if err := saveWatchPaths(watchPaths); err != nil {
 			fmt.Printf("Warning: could not save watch config locally: %v\n", err)
 		}
@@ -328,7 +346,9 @@ func main() {
 		if path == "/etc" {
 			skips = skipEtcPaths
 		}
-		hashes[path] = hashDirectory(path, skips)
+		for filePath, fileHash := range hashFiles(path, skips) {
+			hashes[filePath] = fileHash
+		}
 	}
 
 	// Step 4: Create JSON from current hashes
