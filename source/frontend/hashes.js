@@ -7,6 +7,10 @@ const ALERT_WINDOW_HOURS = 24;
 // currently selected agent (set when entering detail view)
 let currentAgentId = null;
 
+// module-level data (set after initial load, used for re-renders)
+let allData = [];
+let allAgentGroups = {};
+
 const DEFAULT_WATCH_PATHS = ["/boot", "/etc", "/root", "/usr/bin", "/usr/sbin"];
 
 // authentication
@@ -32,7 +36,24 @@ async function logout() {
     window.location.href = "login.html";
 }
 
-// alert processing
+// --- acknowledged alerts (localStorage) ---
+
+function getAcknowledgedAlerts() {
+    try {
+        return new Set(JSON.parse(localStorage.getItem("acknowledged_alerts") || "[]"));
+    } catch {
+        return new Set();
+    }
+}
+
+function acknowledgeAlert(id) {
+    const set = getAcknowledgedAlerts();
+    set.add(String(id));
+    localStorage.setItem("acknowledged_alerts", JSON.stringify([...set]));
+}
+
+// --- alert processing ---
+
 function hasChanges(changed) {
     return Object.values(changed || {}).some(val => val === true);
 }
@@ -44,12 +65,14 @@ function isRecent(timestamp, hoursAgo) {
 }
 
 function extractAlerts(data) {
+    const acknowledged = getAcknowledgedAlerts();
     return data
-        .filter(record => hasChanges(record.changed) && isRecent(record.timestamp, ALERT_WINDOW_HOURS))
-        .map(record => ({
-            agent_id: record.agent_id,
-            timestamp: record.timestamp,
-            changed: record.changed
+        .filter(r => hasChanges(r.changed) && isRecent(r.timestamp, ALERT_WINDOW_HOURS) && !acknowledged.has(String(r.id)))
+        .map(r => ({
+            id: r.id,
+            agent_id: r.agent_id,
+            timestamp: r.timestamp,
+            changed: r.changed
         }));
 }
 
@@ -62,20 +85,35 @@ function getChangedDirectories(changed) {
     return `${paths.slice(0, 3).join(", ")} ... and ${paths.length - 3} more`;
 }
 
-// ui components
+// --- agent last-seen status ---
+
+function getAgentStatus(lastTimestamp) {
+    const hoursSince = (Date.now() - new Date(lastTimestamp)) / 3_600_000;
+    if (hoursSince < 24) return "active";
+    if (hoursSince < 72) return "stale";
+    return "inactive";
+}
+
+// --- ui components ---
+
+function updateHeaderAlertCount(count) {
+    const alertBtn = document.getElementById("alert-btn");
+    if (alertBtn) alertBtn.textContent = `Alerts${count > 0 ? ` (${count})` : ""}`;
+}
+
 function createHeaderButtons(alertCount) {
     const container = document.createElement("div");
     container.className = "header-buttons";
 
     const configBtn = document.createElement("button");
     configBtn.id = "config-btn";
-    configBtn.textContent = "⚙️ Watch Paths";
+    configBtn.textContent = "Watch Paths";
     configBtn.onclick = toggleConfigPanel;
-    configBtn.style.display = "none"; // hidden until inside a machine
+    configBtn.style.display = "none";
 
     const alertBtn = document.createElement("button");
     alertBtn.id = "alert-btn";
-    alertBtn.textContent = `🔔 Alerts${alertCount > 0 ? ` (${alertCount})` : ""}`;
+    alertBtn.textContent = `Alerts${alertCount > 0 ? ` (${alertCount})` : ""}`;
     alertBtn.onclick = toggleAlertPanel;
 
     const logoutBtn = document.createElement("button");
@@ -92,12 +130,17 @@ function createHeaderButtons(alertCount) {
 function createAlertItem(alert) {
     const item = document.createElement("div");
     item.className = "alert-item";
+    item.dataset.alertId = String(alert.id);
     item.innerHTML = `
-        <div class="alert-title">⚠️ Hash Change Detected</div>
-        <div class="alert-detail"><strong>Agent:</strong> ${alert.agent_id}</div>
-        <div class="alert-detail"><strong>Time:</strong> ${new Date(alert.timestamp).toLocaleString()}</div>
-        <div class="alert-detail"><strong>Changed:</strong> ${getChangedDirectories(alert.changed)}</div>
+        <div class="alert-item-body">
+            <div class="alert-title">Hash Change Detected</div>
+            <div class="alert-detail"><strong>Agent:</strong> ${alert.agent_id}</div>
+            <div class="alert-detail"><strong>Time:</strong> ${new Date(alert.timestamp).toLocaleString()}</div>
+            <div class="alert-detail"><strong>Changed:</strong> ${getChangedDirectories(alert.changed)}</div>
+        </div>
+        <button class="alert-dismiss-btn" title="Dismiss">Dismiss</button>
     `;
+    item.querySelector(".alert-dismiss-btn").onclick = () => dismissAlert(alert.id);
     return item;
 }
 
@@ -108,11 +151,18 @@ function createAlertPanel(alerts) {
         panel.id = "alert-panel";
         document.body.appendChild(panel);
     }
+    renderAlertPanel(alerts);
+    return panel;
+}
+
+function renderAlertPanel(alerts) {
+    const panel = document.getElementById("alert-panel");
+    if (!panel) return;
 
     const header = document.createElement("div");
     header.className = "alert-header";
     header.innerHTML = `
-        <span>🔔 Alerts (${alerts.length})</span>
+        <span>Alerts (${alerts.length})</span>
         <button class="close-btn" onclick="toggleAlertPanel()">×</button>
     `;
 
@@ -128,8 +178,19 @@ function createAlertPanel(alerts) {
     panel.innerHTML = "";
     panel.appendChild(header);
     panel.appendChild(content);
-    
-    return panel;
+}
+
+function dismissAlert(id) {
+    acknowledgeAlert(id);
+    const alerts = extractAlerts(allData);
+    renderAlertPanel(alerts);
+    updateHeaderAlertCount(alerts.length);
+    // update agent card badges
+    const grid = document.getElementById("agent-grid");
+    if (grid) {
+        grid.innerHTML = "";
+        renderAgentGrid(allAgentGroups, alerts, grid);
+    }
 }
 
 function toggleAlertPanel() {
@@ -152,6 +213,68 @@ function groupByAgent(data) {
         return groups;
     }, {});
 }
+
+// --- baseline reset ---
+
+function showBaselineConfirm(btn, agentId, recordId) {
+    const original = btn.outerHTML;
+    btn.replaceWith(createBaselineConfirmEl(agentId, recordId, original));
+}
+
+function createBaselineConfirmEl(agentId, recordId, originalBtnHtml) {
+    const wrap = document.createElement("span");
+    wrap.className = "timeline-baseline-confirm";
+    wrap.innerHTML = `
+        <span class="timeline-baseline-confirm-label">Reset baseline?</span>
+        <button class="timeline-baseline-yes">Yes</button>
+        <button class="timeline-baseline-no">No</button>
+    `;
+    wrap.querySelector(".timeline-baseline-yes").onclick = () => doResetBaseline(wrap, agentId, recordId);
+    wrap.querySelector(".timeline-baseline-no").onclick = () => {
+        const temp = document.createElement("span");
+        temp.innerHTML = originalBtnHtml;
+        const newBtn = temp.firstChild;
+        newBtn.onclick = () => showBaselineConfirm(newBtn, agentId, recordId);
+        wrap.replaceWith(newBtn);
+    };
+    return wrap;
+}
+
+async function doResetBaseline(confirmEl, agentId, recordId) {
+    const statusEl = document.createElement("span");
+    statusEl.className = "timeline-baseline-status";
+    statusEl.textContent = "Resetting…";
+    confirmEl.replaceWith(statusEl);
+    try {
+        const response = await fetch(`${API_BASE}/baseline`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ agent_id: agentId, record_id: recordId })
+        });
+        const data = await response.json();
+        if (data.success) {
+            statusEl.textContent = "Baseline reset.";
+            const hashResponse = await fetch(`${API_BASE}/hashes`, { credentials: "include" });
+            allData = await hashResponse.json();
+            allAgentGroups = groupByAgent(allData);
+            const container = document.getElementById("tables-container");
+            if (container) {
+                container.innerHTML = "";
+                container.appendChild(createHashTable(allAgentGroups[agentId]));
+            }
+        } else {
+            statusEl.textContent = "Error: " + data.error;
+            statusEl.classList.add("timeline-baseline-error");
+        }
+    } catch (e) {
+        console.error("Baseline reset failed:", e);
+        statusEl.textContent = "Failed. Check connection.";
+        statusEl.classList.add("timeline-baseline-error");
+    }
+}
+
+// --- timeline ---
 
 function createHashTable(records) {
     const container = document.createElement("div");
@@ -185,7 +308,7 @@ function createHashTable(records) {
             <span class="timeline-timestamp">${new Date(r.timestamp).toLocaleString()}</span>
             <span class="timeline-files">${totalFiles} file${totalFiles !== 1 ? "s" : ""}</span>
             ${statusHtml}
-            ${changedPaths.length > 0 ? `<button class="timeline-expand-btn">▼ Details</button>` : ""}
+            ${changedPaths.length > 0 ? `<button class="timeline-expand-btn">Details</button>` : ""}
         `;
 
         row.appendChild(summary);
@@ -207,10 +330,19 @@ function createHashTable(records) {
                 details.appendChild(fileRow);
             });
 
+            // set baseline button inside the details panel
+            if (!isBaseline) {
+                const baselineBtn = document.createElement("button");
+                baselineBtn.className = "timeline-baseline-btn";
+                baselineBtn.textContent = "Set baseline";
+                baselineBtn.onclick = () => showBaselineConfirm(baselineBtn, r.agent_id, r.id);
+                details.appendChild(baselineBtn);
+            }
+
             const expandBtn = summary.querySelector(".timeline-expand-btn");
             expandBtn.onclick = () => {
                 details.classList.toggle("hidden");
-                expandBtn.textContent = details.classList.contains("hidden") ? "▼ Details" : "▲ Hide";
+                expandBtn.textContent = details.classList.contains("hidden") ? "Details" : "Hide";
             };
 
             row.appendChild(details);
@@ -229,7 +361,6 @@ function showAgentList() {
     if (configBtn) configBtn.style.display = "none";
     const alertBtn = document.getElementById("alert-btn");
     if (alertBtn) alertBtn.style.display = "";
-    // close panels if open
     const configPanel = document.getElementById("config-panel");
     if (configPanel) configPanel.classList.remove("show");
     document.getElementById("view-list").classList.remove("hidden");
@@ -254,6 +385,60 @@ function showAgentDetail(agentId, agentGroups) {
     history.pushState({ view: "detail", agentId }, "");
 }
 
+// --- agent delete ---
+
+function showAgentDeleteConfirm(btn, agentId, card) {
+    const row = btn.closest(".agent-card-delete-row");
+    row.innerHTML = "";
+
+    const label = document.createElement("span");
+    label.className = "agent-delete-confirm-label";
+    label.textContent = `Delete agent?`;
+
+    const yesBtn = document.createElement("button");
+    yesBtn.className = "agent-delete-yes";
+    yesBtn.textContent = "Yes";
+    yesBtn.onclick = (e) => { e.stopPropagation(); doDeleteAgent(row, agentId, card); };
+
+    const noBtn = document.createElement("button");
+    noBtn.className = "agent-delete-no";
+    noBtn.textContent = "No";
+    noBtn.onclick = (e) => {
+        e.stopPropagation();
+        row.innerHTML = "";
+        const newBtn = document.createElement("button");
+        newBtn.className = "agent-delete-btn";
+        newBtn.textContent = "Delete";
+        newBtn.onclick = (ev) => { ev.stopPropagation(); showAgentDeleteConfirm(newBtn, agentId, card); };
+        row.appendChild(newBtn);
+    };
+
+    row.appendChild(label);
+    row.appendChild(yesBtn);
+    row.appendChild(noBtn);
+}
+
+async function doDeleteAgent(row, agentId, card) {
+    row.innerHTML = `<span class="agent-delete-status">Deleting…</span>`;
+    try {
+        const response = await fetch(`${API_BASE}/agents/${encodeURIComponent(agentId)}`, {
+            method: "DELETE",
+            credentials: "include"
+        });
+        const data = await response.json();
+        if (data.success) {
+            card.remove();
+            allData = allData.filter(r => r.agent_id !== agentId);
+            delete allAgentGroups[agentId];
+        } else {
+            row.innerHTML = `<span class="agent-delete-status agent-delete-error">Error: ${data.error}</span>`;
+        }
+    } catch (e) {
+        console.error("Delete agent failed:", e);
+        row.innerHTML = `<span class="agent-delete-status agent-delete-error">Failed. Check connection.</span>`;
+    }
+}
+
 // agent grid rendering
 function renderAgentGrid(agentGroups, alerts, container) {
     const alertsByAgent = {};
@@ -266,15 +451,31 @@ function renderAgentGrid(agentGroups, alerts, container) {
         const lastRecord = records.reduce((a, b) =>
             new Date(a.timestamp) >= new Date(b.timestamp) ? a : b);
         const lastSeen = lastRecord ? new Date(lastRecord.timestamp).toLocaleString() : "Unknown";
+        const status = lastRecord ? getAgentStatus(lastRecord.timestamp) : "inactive";
 
         const card = document.createElement("div");
         card.className = `agent-card${alertCount > 0 ? " has-alerts" : ""}`;
         card.innerHTML = `
-            <div class="agent-card-name">🖥️ ${agentId}</div>
-            <div class="agent-card-meta">Last seen: ${lastSeen}</div>
+            <div class="agent-card-name">${agentId}</div>
+            <div class="agent-card-meta">
+                <span class="agent-status-dot agent-status-${status}" title="${status}"></span>
+                Last seen: ${lastSeen}
+            </div>
             ${alertCount > 0 ? `<div class="agent-card-badge">${alertCount} alert${alertCount > 1 ? "s" : ""}</div>` : ""}
+            <div class="agent-card-delete-row"></div>
         `;
         card.onclick = () => showAgentDetail(agentId, agentGroups);
+
+        const deleteRow = card.querySelector(".agent-card-delete-row");
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "agent-delete-btn";
+        deleteBtn.textContent = "Delete";
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation();
+            showAgentDeleteConfirm(deleteBtn, agentId, card);
+        };
+        deleteRow.appendChild(deleteBtn);
+
         container.appendChild(card);
     });
 }
@@ -284,14 +485,11 @@ function renderPathList(paths) {
     const list = document.getElementById("config-path-list");
     if (!list) return;
     list.innerHTML = "";
-    // defaults first, always shown without remove button
     DEFAULT_WATCH_PATHS.forEach(p => appendPathItem(list, p, false));
-    // divider between defaults and custom paths
     const divider = document.createElement("li");
     divider.className = "config-path-divider";
     divider.textContent = "Custom";
     list.appendChild(divider);
-    // custom paths after divider
     paths.filter(p => !DEFAULT_WATCH_PATHS.includes(p)).forEach(p => appendPathItem(list, p, true));
 }
 
@@ -300,7 +498,7 @@ function appendPathItem(list, path, removable) {
     li.className = "config-path-item" + (removable ? "" : " config-path-default");
     li.innerHTML = removable
         ? `<span class="config-path-text">${path}</span><button class="remove-path-btn" onclick="removeWatchPath(this)" title="Remove">×</button>`
-        : `<span class="config-path-text">${path}</span><span class="config-path-lock" title="Default path">🔒</span>`;
+        : `<span class="config-path-text">${path}</span><span class="config-path-lock" title="Default path">locked</span>`;
     list.appendChild(li);
 }
 
@@ -364,9 +562,9 @@ async function saveConfig() {
         return;
     }
     const list = document.getElementById("config-path-list");
-        const paths = list
-            ? [...DEFAULT_WATCH_PATHS, ...Array.from(list.querySelectorAll(".config-path-item:not(.config-path-default) .config-path-text")).map(s => s.textContent)]
-            : DEFAULT_WATCH_PATHS;
+    const paths = list
+        ? [...DEFAULT_WATCH_PATHS, ...Array.from(list.querySelectorAll(".config-path-item:not(.config-path-default) .config-path-text")).map(s => s.textContent)]
+        : DEFAULT_WATCH_PATHS;
     if (paths.length === 0) {
         showConfigStatus("Add at least one path.", true);
         return;
@@ -398,7 +596,7 @@ function createConfigPanel() {
     panel.id = "config-panel";
     panel.innerHTML = `
         <div class="config-header">
-            <span>⚙️ Watch Paths</span>
+            <span>Watch Paths</span>
             <button class="close-btn" onclick="toggleConfigPanel()">×</button>
         </div>
         <div class="config-content">
@@ -444,15 +642,14 @@ async function loadHashData() {
             return;
         }
 
-        const data = await response.json();
-        const alerts = extractAlerts(data);
-        const agentGroups = groupByAgent(data);
+        allData = await response.json();
+        allAgentGroups = groupByAgent(allData);
+        const alerts = extractAlerts(allData);
 
         createHeaderButtons(alerts.length);
         createAlertPanel(alerts);
         createConfigPanel();
 
-        // back button in detail view
         const backBtn = document.createElement("button");
         backBtn.id = "back-btn";
         backBtn.textContent = "Back to Agents";
@@ -460,20 +657,17 @@ async function loadHashData() {
         const detailView = document.getElementById("view-detail");
         detailView.insertBefore(backBtn, detailView.firstChild);
 
-        renderAgentGrid(agentGroups, alerts, document.getElementById("agent-grid"));
+        renderAgentGrid(allAgentGroups, alerts, document.getElementById("agent-grid"));
 
-        // handle browser back/forward navigation
         window.addEventListener("popstate", (e) => {
             if (e.state?.view === "detail") {
-                showAgentDetail(e.state.agentId, agentGroups);
+                showAgentDetail(e.state.agentId, allAgentGroups);
             } else {
                 showAgentList();
             }
         });
 
-        // close panels when clicking outside
         document.addEventListener("click", (e) => {
-            // ignore clicks on elements that were just removed from the DOM
             if (!e.target.isConnected) return;
             const configPanel = document.getElementById("config-panel");
             const alertPanel = document.getElementById("alert-panel");

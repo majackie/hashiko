@@ -480,6 +480,37 @@ def handle_view():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# delete agent endpoint - removes all records and config for an agent
+@app.route("/api/agents/<path:agent_id>", methods=["DELETE"])
+@login_required
+def handle_delete_agent(agent_id):
+    try:
+        execute_query("DELETE FROM hash_records WHERE agent_id = %s", (agent_id,))
+        execute_query("DELETE FROM watch_config WHERE agent_id = %s", (agent_id,))
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# reset baseline endpoint - deletes all records older than the given record for an agent
+@app.route("/api/baseline", methods=["POST"])
+@login_required
+def handle_reset_baseline():
+    data = request.get_json() or {}
+    agent_id = data.get("agent_id", "").strip()
+    record_id = data.get("record_id")
+    if not agent_id or record_id is None:
+        return jsonify({"success": False, "error": "agent_id and record_id required"}), 400
+    try:
+        execute_query(
+            "DELETE FROM hash_records WHERE agent_id = %s AND id < %s",
+            (agent_id, int(record_id)),
+        )
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 # static files
 @app.route("/")
 def serve_frontend():

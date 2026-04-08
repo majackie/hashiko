@@ -369,6 +369,10 @@ th {
 }
 
 .alert-item {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
     padding: 15px;
     border-bottom: 1px solid #eee;
     background: #fff9e6;
@@ -380,6 +384,27 @@ th {
 
 .alert-item:hover {
     background: #fff3cd;
+}
+
+.alert-item-body {
+    flex: 1;
+}
+
+.alert-dismiss-btn {
+    flex-shrink: 0;
+    padding: 4px 8px;
+    background: none;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75em;
+    color: #888;
+    white-space: nowrap;
+}
+
+.alert-dismiss-btn:hover {
+    background: #f0f0f0;
+    color: #333;
 }
 
 .alert-title {
@@ -449,9 +474,23 @@ th {
 }
 
 .agent-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 0.85em;
     color: #666;
 }
+
+.agent-status-dot {
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.agent-status-active   { background: #4caf50; }
+.agent-status-stale    { background: #ff9800; }
+.agent-status-inactive { background: #f44336; }
 
 .agent-card-badge {
     display: inline-block;
@@ -462,6 +501,61 @@ th {
     border-radius: 12px;
     font-size: 0.8em;
     font-weight: bold;
+}
+
+.agent-card-delete-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.agent-delete-btn {
+    padding: 3px 8px;
+    background: none;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75em;
+    color: #999;
+}
+
+.agent-delete-btn:hover {
+    background: #f0f0f0;
+    color: #333;
+}
+
+.agent-delete-confirm-label {
+    font-size: 0.78em;
+    color: #555;
+}
+
+.agent-delete-yes,
+.agent-delete-no {
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid #bbb;
+    cursor: pointer;
+    font-size: 0.75em;
+}
+
+.agent-delete-yes {
+    background: #d32f2f;
+    color: white;
+    border-color: #d32f2f;
+}
+
+.agent-delete-yes:hover { background: #b71c1c; }
+.agent-delete-no { background: none; color: #555; }
+.agent-delete-no:hover { background: #f0f0f0; }
+
+.agent-delete-status {
+    font-size: 0.78em;
+    color: #388e3c;
+}
+
+.agent-delete-error {
+    color: #d32f2f;
 }
 
 /* hash timeline */
@@ -559,6 +653,65 @@ th {
     letter-spacing: 0.04em;
     min-width: 4.5rem;
     color: #555;
+}
+
+.timeline-baseline-btn {
+    display: block;
+    margin-top: 10px;
+    padding: 4px 10px;
+    background: none;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8em;
+    color: #777;
+}
+
+.timeline-baseline-btn:hover {
+    background: #f0f0f0;
+    color: #333;
+}
+
+.timeline-baseline-confirm {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.timeline-baseline-confirm-label {
+    font-size: 0.8em;
+    color: #555;
+}
+
+.timeline-baseline-yes,
+.timeline-baseline-no {
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid #bbb;
+    cursor: pointer;
+    font-size: 0.8em;
+}
+
+.timeline-baseline-yes {
+    background: #d32f2f;
+    color: white;
+    border-color: #d32f2f;
+}
+
+.timeline-baseline-yes:hover { background: #b71c1c; }
+.timeline-baseline-no  { background: none; color: #555; }
+.timeline-baseline-no:hover  { background: #f0f0f0; }
+
+.timeline-baseline-status {
+    display: block;
+    margin-top: 10px;
+    font-size: 0.8em;
+    color: #388e3c;
+}
+
+.timeline-baseline-error {
+    color: #d32f2f;
 }
 
 .timeline-file-path {
